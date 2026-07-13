@@ -55,7 +55,9 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
                 }
             }
         }
-        // Tag list — none selected means "show all tags".
+        // Tag list — none selected means "show all tags". Both this and the
+        // fields section below carry a weight: an unweighted fields Column
+        // would be measured first and squeeze the tag list to zero height.
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (index == null) {
                 Text(
@@ -73,6 +75,14 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
                     }
                     if (byCount) ids.sortedByDescending { index.tagCounts[it] }
                     else ids.sortedBy { index.tags[it].lowercase() }
+                }
+                if (tagOrder.isEmpty()) {
+                    Text(
+                        "No tags match \"$query\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(8.dp),
+                    )
                 }
                 val listState = rememberLazyListState()
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 10.dp)) {
@@ -113,7 +123,7 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         val fieldScroll = rememberScrollState()
-        Column(Modifier.verticalScroll(fieldScroll)) {
+        Column(Modifier.weight(1.3f).verticalScroll(fieldScroll)) {
             SectionTitle("Levels")
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 for (level in listOf(LogLevel.ERROR, LogLevel.WARN, LogLevel.INFO, LogLevel.DEBUG, LogLevel.VERBOSE)) {
