@@ -20,6 +20,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.model.LogLevel
+import com.sherlog.parser.LogcatLineParser
 
 @Composable
 fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
@@ -139,6 +141,7 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
             SectionTitle("Time range")
             SmallField(state, state.timeFromText, { state.timeFromText = it }, "From: MM-DD HH:MM:SS")
             SmallField(state, state.timeToText, { state.timeToText = it }, "To: MM-DD HH:MM:SS")
+            TimeRangeSlider(state)
 
             SectionTitle("Exclude lines containing")
             SmallField(state, state.excludeText, { state.excludeText = it }, "adbd, CCodec, Audio…")
@@ -147,6 +150,39 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
             SmallField(state, state.includeText, { state.includeText = it }, "FATAL EXCEPTION, Caused by…")
         }
     }
+}
+
+/**
+ * Two-thumb slider over the file's full time span. The From/To text fields
+ * are the source of truth: dragging writes formatted timestamps into them
+ * (re-filtering only when the thumb is released), and typing in the fields
+ * moves the thumbs. Positions are normalized to 0..1 because raw millisecond
+ * values exceed Float precision on multi-day logs.
+ */
+@Composable
+private fun TimeRangeSlider(state: AppState) {
+    val index = state.index ?: return
+    val first = index.firstTimestampMs ?: return
+    val last = index.lastTimestampMs ?: return
+    if (last <= first) return
+    val span = (last - first).toFloat()
+
+    fun toFraction(text: String, default: Float): Float =
+        LogcatLineParser.parseTimestamp(text)
+            ?.let { ((it - first).toFloat() / span).coerceIn(0f, 1f) } ?: default
+
+    val fromF = toFraction(state.timeFromText, 0f)
+    val toF = toFraction(state.timeToText, 1f).coerceAtLeast(fromF)
+
+    RangeSlider(
+        value = fromF..toF,
+        onValueChange = { range ->
+            state.timeFromText = LogcatLineParser.formatTimestamp(first + (range.start * span).toLong())
+            state.timeToText = LogcatLineParser.formatTimestamp(first + (range.endInclusive * span).toLong())
+        },
+        onValueChangeFinished = { state.scheduleApply(0) },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
