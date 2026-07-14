@@ -59,6 +59,8 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                             filteredLines = state.filteredLines,
                             searchQuery = state.appliedFilter.searchQuery,
                             searchIsRegex = state.appliedFilter.searchIsRegex,
+                            selectionHighlight = state.selectionHighlight,
+                            onSelectionChange = { state.selectionHighlight = it },
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                     }

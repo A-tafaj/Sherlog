@@ -45,6 +45,9 @@ class AppState(private val scope: CoroutineScope) {
     var tagSearchText by mutableStateOf("")
     var sortTagsByCount by mutableStateOf(true)
 
+    /** Text currently selected in the viewer; all its occurrences are highlighted. */
+    var selectionHighlight by mutableStateOf("")
+
     // Results
     var appliedFilter by mutableStateOf(FilterState.EMPTY)
         private set

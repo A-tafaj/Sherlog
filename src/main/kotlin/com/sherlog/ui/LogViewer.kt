@@ -9,20 +9,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.core.LineTextProvider
@@ -42,7 +50,12 @@ private val levelColors = mapOf(
     LogLevel.UNKNOWN to Color(0xFFB0BEC5),
 )
 
-private val highlightStyle = SpanStyle(background = Color(0x66FFEB3B), color = Color.White)
+private val searchHighlightStyle = SpanStyle(background = Color(0x66FFEB3B), color = Color.White)
+private val selectionHighlightStyle = SpanStyle(background = Color(0x5900BCD4), color = Color.White)
+
+/** Minimum selected characters before occurrence highlighting kicks in. */
+private const val MIN_HIGHLIGHT_LENGTH = 2
+private const val MAX_HIGHLIGHT_LENGTH = 200
 
 @Composable
 fun LogViewer(
@@ -51,6 +64,8 @@ fun LogViewer(
     filteredLines: IntArray,
     searchQuery: String,
     searchIsRegex: Boolean,
+    selectionHighlight: String,
+    onSelectionChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -59,13 +74,10 @@ fun LogViewer(
     }
 
     Box(modifier) {
-        // SelectionContainer lets the user mouse-select across rows and Ctrl+C.
-        SelectionContainer {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 12.dp)) {
-                items(count = filteredLines.size, key = { filteredLines[it] }) { pos ->
-                    val lineIndex = filteredLines[pos]
-                    LogRow(index, provider, lineIndex, matcher)
-                }
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 12.dp)) {
+            items(count = filteredLines.size, key = { filteredLines[it] }) { pos ->
+                val lineIndex = filteredLines[pos]
+                LogRow(index, provider, lineIndex, matcher, selectionHighlight, onSelectionChange)
             }
         }
         VerticalScrollbar(
@@ -75,18 +87,27 @@ fun LogViewer(
     }
 }
 
+/**
+ * One log line as a read-only text field. A text field (rather than plain
+ * Text in a SelectionContainer) is what lets us observe the user's selection:
+ * selecting a tag or phrase highlights every occurrence of it across the
+ * visible lines; collapsing the selection (a plain click) clears it.
+ */
 @Composable
 private fun LogRow(
     index: LogIndex,
     provider: LineTextProvider,
     lineIndex: Int,
     matcher: FilterEngine.SearchMatcher?,
+    selectionHighlight: String,
+    onSelectionChange: (String) -> Unit,
 ) {
     val text by produceState("…", lineIndex, provider) {
         value = withContext(Dispatchers.IO) {
             runCatching { provider.line(lineIndex) }.getOrElse { "<read error: ${it.message}>" }
         }
     }
+    var fieldValue by remember(lineIndex, text) { mutableStateOf(TextFieldValue(text)) }
     val level = index.level(lineIndex)
     val color = levelColors.getValue(level)
     val rowBackground = when (level) {
@@ -94,25 +115,69 @@ private fun LogRow(
         LogLevel.WARN -> Color(0x14FFA000)
         else -> Color.Transparent
     }
-    Text(
-        text = highlighted(text, matcher),
-        color = color,
-        fontFamily = FontFamily.Monospace,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
+    val transformation = remember(matcher, selectionHighlight) {
+        LogHighlightTransformation(matcher, selectionHighlight)
+    }
+
+    BasicTextField(
+        value = fieldValue,
+        onValueChange = { new ->
+            // readOnly guarantees the text is unchanged; only selection moves.
+            fieldValue = TextFieldValue(text, new.selection)
+            val sel = new.selection
+            if (sel.collapsed) {
+                onSelectionChange("")
+            } else {
+                val selected = text.substring(sel.min, sel.max).trim()
+                onSelectionChange(if (selected.length in MIN_HIGHLIGHT_LENGTH..MAX_HIGHLIGHT_LENGTH) selected else "")
+            }
+        },
+        readOnly = true,
+        textStyle = TextStyle(
+            color = color,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+        ),
+        cursorBrush = SolidColor(color),
+        visualTransformation = transformation,
         modifier = Modifier.fillMaxWidth().background(rowBackground).padding(horizontal = 8.dp, vertical = 1.dp),
     )
 }
 
-private fun highlighted(text: String, matcher: FilterEngine.SearchMatcher?): AnnotatedString {
-    val regex = matcher?.regex ?: return AnnotatedString(text)
-    return buildAnnotatedString {
-        append(text)
-        for (m in regex.findAll(text)) {
-            if (m.range.isEmpty()) continue
-            addStyle(highlightStyle, m.range.first, m.range.last + 1)
+/**
+ * Paints search matches (yellow) and occurrences of the user's current
+ * selection (cyan) without altering the text, so offsets map 1:1.
+ */
+private class LogHighlightTransformation(
+    private val matcher: FilterEngine.SearchMatcher?,
+    private val selection: String,
+) : VisualTransformation {
+
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text
+        val styled = buildAnnotatedString {
+            append(raw)
+            matcher?.regex?.let { regex ->
+                for (m in regex.findAll(raw)) {
+                    if (!m.range.isEmpty()) addStyle(searchHighlightStyle, m.range.first, m.range.last + 1)
+                }
+            }
+            if (selection.length >= MIN_HIGHLIGHT_LENGTH) {
+                var i = raw.indexOf(selection, 0, ignoreCase = true)
+                while (i >= 0) {
+                    addStyle(selectionHighlightStyle, i, i + selection.length)
+                    i = raw.indexOf(selection, i + selection.length, ignoreCase = true)
+                }
+            }
         }
+        return TransformedText(styled, OffsetMapping.Identity)
     }
+
+    override fun equals(other: Any?): Boolean =
+        other is LogHighlightTransformation && other.matcher == matcher && other.selection == selection
+
+    override fun hashCode(): Int = 31 * (matcher?.hashCode() ?: 0) + selection.hashCode()
 }
 
 @Composable
