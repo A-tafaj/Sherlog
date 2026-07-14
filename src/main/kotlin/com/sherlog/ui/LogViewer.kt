@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,10 +59,13 @@ fun LogViewer(
     }
 
     Box(modifier) {
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 12.dp)) {
-            items(count = filteredLines.size, key = { filteredLines[it] }) { pos ->
-                val lineIndex = filteredLines[pos]
-                LogRow(index, provider, lineIndex, matcher)
+        // SelectionContainer lets the user mouse-select across rows and Ctrl+C.
+        SelectionContainer {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 12.dp)) {
+                items(count = filteredLines.size, key = { filteredLines[it] }) { pos ->
+                    val lineIndex = filteredLines[pos]
+                    LogRow(index, provider, lineIndex, matcher)
+                }
             }
         }
         VerticalScrollbar(
