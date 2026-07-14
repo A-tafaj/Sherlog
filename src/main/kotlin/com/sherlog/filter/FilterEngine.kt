@@ -58,8 +58,9 @@ object FilterEngine {
             }
             if (state.pids.isNotEmpty() && index.pids[i] !in state.pids) return false
             if (from != null || to != null) {
+                // Unparsed lines carry the previous parsed line's timestamp,
+                // so stack traces stay with their crash inside a time range.
                 val ts = index.timestamps[i]
-                if (ts == 0L && index.tagIds[i] < 0) return false // unparsed line has no time
                 if (from != null && ts < from) return false
                 if (to != null && ts > to) return false
             }

@@ -81,6 +81,10 @@ class AppState(private val scope: CoroutineScope) {
                 }
                 index = idx
                 provider = LineTextProvider(idx)
+                // Pre-fill the time range with the log's actual span so the
+                // user only edits the boundary they care about.
+                timeFromText = idx.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+                timeToText = idx.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
                 statusMessage = "%,d lines · %s".format(idx.lineCount, file.name)
                 runFilter(idx)
             } catch (e: Exception) {
@@ -116,7 +120,9 @@ class AppState(private val scope: CoroutineScope) {
 
     fun clearFilters() {
         selectedTags = emptySet()
-        pidText = ""; timeFromText = ""; timeToText = ""
+        pidText = ""
+        timeFromText = index?.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+        timeToText = index?.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
         excludeText = ""; includeText = ""; searchText = ""
         searchIsRegex = false
         enabledLevels = LogLevel.entries.toSet()

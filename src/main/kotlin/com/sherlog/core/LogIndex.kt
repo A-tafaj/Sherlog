@@ -26,6 +26,16 @@ class LogIndex(
 ) {
     val lineCount: Int get() = offsets.size - 1
 
+    /** Timestamp of the first/last parsed line; null when no line parsed. */
+    val firstTimestampMs: Long? by lazy {
+        for (i in 0 until lineCount) if (tagIds[i] >= 0) return@lazy timestamps[i]
+        null
+    }
+    val lastTimestampMs: Long? by lazy {
+        for (i in lineCount - 1 downTo 0) if (tagIds[i] >= 0) return@lazy timestamps[i]
+        null
+    }
+
     val errorCount: Int by lazy { countLevel(LogLevel.ERROR) + countLevel(LogLevel.FATAL) }
     val warningCount: Int by lazy { countLevel(LogLevel.WARN) }
 

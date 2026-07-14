@@ -43,6 +43,10 @@ class LogIndexerTest {
         assertEquals(LogLevel.UNKNOWN, index.level(3))
         assertEquals(-1, index.pids[3])
         assertEquals(1913, index.pids[2])
+        // Unparsed lines inherit the previous parsed line's timestamp.
+        assertEquals(index.timestamps[2], index.timestamps[3])
+        assertEquals(index.timestamps[0], index.firstTimestampMs)
+        assertEquals(index.timestamps[5], index.lastTimestampMs)
     }
 
     @Test

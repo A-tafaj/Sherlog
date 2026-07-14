@@ -32,6 +32,10 @@ object LogIndexer {
         val tagCounts = IntList()
 
         val parsed = LogcatLineParser.Result()
+        // Unparsed lines (stack traces, buffer markers) inherit the timestamp
+        // of the preceding parsed line so time-range filters keep them with
+        // their context.
+        var lastTimestampMs = 0L
         // Carry buffer for a line spanning read-buffer boundaries.
         var carry = ByteArray(4096)
         var carryLen = 0
@@ -47,6 +51,7 @@ object LogIndexer {
             val line = String(bytes, from, textLen, Charsets.UTF_8)
             if (LogcatLineParser.parse(line, parsed)) {
                 timestamps.add(parsed.timestampMs)
+                lastTimestampMs = parsed.timestampMs
                 pids.add(parsed.pid)
                 levels.add(parsed.level.ordinal.toByte())
                 val tagId = tagLookup.getOrPut(parsed.tag) {
@@ -57,7 +62,7 @@ object LogIndexer {
                 tagCounts[tagId] = tagCounts[tagId] + 1
                 tagIds.add(tagId)
             } else {
-                timestamps.add(0L)
+                timestamps.add(lastTimestampMs)
                 pids.add(-1)
                 levels.add(0) // LogLevel.UNKNOWN
                 tagIds.add(-1)

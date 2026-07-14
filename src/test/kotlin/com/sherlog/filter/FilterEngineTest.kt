@@ -66,14 +66,15 @@ class FilterEngineTest {
     }
 
     @Test
-    fun `time range filter`() {
+    fun `time range filter keeps unparsed lines with their preceding entry`() {
         val result = apply(
             FilterState(
                 timeFromMs = LogcatLineParser.parseTimestamp("07-12 14:10:18"),
                 timeToMs = LogcatLineParser.parseTimestamp("07-12 14:30:00"),
             ),
         )
-        assertContentEquals(intArrayOf(2, 3), result)
+        // Line 4 (the "beginning of main" marker) inherits line 3's timestamp.
+        assertContentEquals(intArrayOf(2, 3, 4), result)
     }
 
     @Test
