@@ -105,6 +105,29 @@ class LogIndexerTest {
     }
 
     @Test
+    fun `indexes year-prefixed format`() = runBlocking {
+        val file = logFile(
+            "2026-07-14 14:27:36.530 22886 46555 I WifiService: \"Interfaces\": [{\n" +
+                "2026-07-14 14:27:36.532 22886 46555 W Volley: reconnecting\n" +
+                "2026-07-14 14:27:37.000 22886 46556 E OkHttp: timeout\n",
+        )
+        val index = LogIndexer.index(file)
+        assertEquals(3, index.lineCount)
+        assertEquals(3, index.tags.size)
+        assertEquals(1, index.errorCount)
+        assertEquals(1, index.warningCount)
+        assertEquals(22886, index.pids[0])
+        assertEquals(
+            com.sherlog.parser.LogcatLineParser.parseTimestamp("2026-07-14 14:27:36.530"),
+            index.firstTimestampMs,
+        )
+        assertEquals(
+            com.sherlog.parser.LogcatLineParser.parseTimestamp("2026-07-14 14:27:37.000"),
+            index.lastTimestampMs,
+        )
+    }
+
+    @Test
     fun `handles lines spanning read buffers`() = runBlocking {
         // A message longer than the carry buffer's initial 4KB.
         val long = "07-12 14:10:18.100  1913 18142 E OkHttp: " + "x".repeat(10_000)

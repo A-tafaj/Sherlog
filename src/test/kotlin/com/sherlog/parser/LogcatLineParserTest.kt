@@ -77,6 +77,58 @@ class LogcatLineParserTest {
     }
 
     @Test
+    fun `parses year-prefixed format`() {
+        val r = parse("2026-07-14 14:27:36.530 22886 46555 I WifiService: \t\"Interfaces\":\t[{")
+        assertNotNull(r)
+        assertEquals(22886, r.pid)
+        assertEquals(46555, r.tid)
+        assertEquals(LogLevel.INFO, r.level)
+        assertEquals("WifiService", r.tag)
+    }
+
+    @Test
+    fun `year timestamps round-trip and order across year boundaries`() {
+        val a = parse("2025-12-31 23:59:59.999   100   100 I a: x")!!
+        val b = parse("2026-01-01 00:00:00.000   100   100 I a: x")!!
+        assertTrue(b.timestampMs > a.timestampMs)
+        assertEquals(1, b.timestampMs - a.timestampMs)
+        assertEquals("2026-07-14 14:27:36.530", LogcatLineParser.formatTimestamp(
+            parse("2026-07-14 14:27:36.530 22886 46555 I Tag: x")!!.timestampMs,
+        ))
+    }
+
+    @Test
+    fun `year format uses real calendar math for non-leap february`() {
+        val feb28 = parse("2026-02-28 23:59:59.999   100   100 I a: x")!!
+        val mar01 = parse("2026-03-01 00:00:00.000   100   100 I a: x")!!
+        assertEquals(1, mar01.timestampMs - feb28.timestampMs) // 2026 is not a leap year
+        val leapFeb29 = parse("2028-02-29 00:00:00.000   100   100 I a: x")
+        assertNotNull(leapFeb29) // 2028 is
+    }
+
+    @Test
+    fun `parseTimestamp accepts year format and matches parsed lines`() {
+        assertEquals(
+            parse("2026-07-14 14:27:36.530 22886 46555 I Tag: x")!!.timestampMs,
+            LogcatLineParser.parseTimestamp("2026-07-14 14:27:36.530"),
+        )
+        assertEquals(
+            parse("2026-07-14 14:27:36.000 22886 46555 I Tag: x")!!.timestampMs,
+            LogcatLineParser.parseTimestamp("2026-07-14 14:27:36"),
+        )
+    }
+
+    @Test
+    fun `no-year and year formats do not collide`() {
+        // No-year lines live in the reference year and always sort before
+        // year-2001+ lines; format style is chosen by that boundary.
+        val noYear = parse("07-12 14:10:16.620  6432 27697 D CCodec: x")!!
+        val withYear = parse("2026-07-12 14:10:16.620  6432 27697 D CCodec: x")!!
+        assertTrue(withYear.timestampMs > noYear.timestampMs)
+        assertEquals("07-12 14:10:16.620", LogcatLineParser.formatTimestamp(noYear.timestampMs))
+    }
+
+    @Test
     fun `leap year day boundaries stay ordered`() {
         val feb29 = LogcatLineParser.parseTimestamp("02-29 23:59:59")!!
         val mar01 = LogcatLineParser.parseTimestamp("03-01 00:00:00")!!

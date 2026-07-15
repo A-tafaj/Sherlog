@@ -3,7 +3,7 @@
 ## The problem it replaces
 
 Debugging Android device issues means digging through logcat dumps that
-are hundreds of megabytes — `daily-log_*.txt`, `loop-test logs`, customer
+are hundreds of megabytes — daily log captures, loop-test logs, customer
 device pulls. The old workflow was:
 
 - Chains of PowerShell `findstr` / `Select-String` commands, re-typed or
@@ -33,9 +33,9 @@ containing 'timeout'" is five clicks, all reversible, with the line count
 updating at every step. The time-range slider makes "the problem happened
 around 14:10" a drag instead of a timestamp-typing exercise.
 
-**Team recipes become one click.** The Network/Crash/Video presets encode
-the exclude/keep lists we previously kept in our heads (or in old shell
-history). New teammates get the same cleanup without knowing the recipe.
+**Recipes become one click.** The Network/Crash/Video presets encode
+the exclude/keep lists previously kept in my head (or in old shell
+history) — one click applies the same cleanup without re-deriving the recipe.
 
 **Context is preserved.** Stack traces and marker lines inherit the timestamp
 of the log line before them, so a time filter around a crash keeps the whole
@@ -77,7 +77,7 @@ reasonable thing to do.
 Every log question used to cost a hand-written command plus a full-file scan
 (minutes on big files, times every iteration). Now the scan happens once at
 open; nearly every question after that is answered in milliseconds. Over the
-many log-debugging sessions per week this team does, that is hours per week —
+many log-debugging sessions per week, that is hours per week —
 and the bigger win is qualitative: cheap iteration means you actually *ask*
 the follow-up questions instead of settling for the first grep that
 half-answers.

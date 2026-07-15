@@ -32,6 +32,14 @@ class LargeFileSmokeTest {
         val indexMs = measureTimeMillis { index = LogIndexer.index(file) }
         println("Indexed %,d lines, %d tags in %,d ms".format(index.lineCount, index.tags.size, indexMs))
         println("Errors: %,d  Warnings: %,d".format(index.errorCount, index.warningCount))
+        val unparsed = (0 until index.lineCount).count { index.tagIds[it] < 0 }
+        println("Unparsed lines: %,d (%.2f%%)".format(unparsed, 100.0 * unparsed / index.lineCount))
+        println(
+            "Time span: %s -> %s".format(
+                index.firstTimestampMs?.let(com.sherlog.parser.LogcatLineParser::formatTimestamp),
+                index.lastTimestampMs?.let(com.sherlog.parser.LogcatLineParser::formatTimestamp),
+            ),
+        )
         assertTrue(index.lineCount > 0)
 
         // Metadata-only filter (should be near-instant)

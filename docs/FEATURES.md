@@ -10,6 +10,9 @@
 
 ## Parsing
 - Extracts timestamp, PID, TID, level (V/D/I/W/E/F) and tag from every line.
+- Two timestamp formats: classic logcat (`07-12 14:10:14.880`) and
+  year-prefixed cached logs (`2026-07-14 14:27:36.530`), with
+  correct ordering across month/year boundaries.
 - Lines that don't match the format are kept with level "Other" and inherit
   the previous line's timestamp so stack traces stay with their crash.
 
@@ -51,7 +54,7 @@
 
 ## Presets
 - **Network Debug**, **Crash Debug**, **Video Debug** — one click fills the
-  exclude/keep fields per the team's standard debugging profiles.
+  exclude/keep fields per common debugging profiles.
 - **Clear Filters** resets everything to the file's defaults.
 
 ## Export

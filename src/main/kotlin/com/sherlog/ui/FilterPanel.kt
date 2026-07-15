@@ -147,8 +147,8 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
             SmallField(state, state.pidText, { state.pidText = it }, "e.g. 1913, 6432")
 
             SectionTitle("Time range")
-            SmallField(state, state.timeFromText, { state.timeFromText = it }, "From: MM-DD HH:MM:SS")
-            SmallField(state, state.timeToText, { state.timeToText = it }, "To: MM-DD HH:MM:SS")
+            SmallField(state, state.timeFromText, { state.timeFromText = it }, "From: [YYYY-]MM-DD HH:MM:SS")
+            SmallField(state, state.timeToText, { state.timeToText = it }, "To: [YYYY-]MM-DD HH:MM:SS")
             TimeRangeSlider(state)
 
             SectionTitle("Exclude lines containing")

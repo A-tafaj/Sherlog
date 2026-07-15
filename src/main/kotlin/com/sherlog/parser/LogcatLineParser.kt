@@ -3,11 +3,19 @@ package com.sherlog.parser
 import com.sherlog.model.LogLevel
 
 /**
- * Parses lines in logcat "threadtime" format:
+ * Parses lines in logcat "threadtime" format, with or without a year:
  *
  * ```
  * 07-12 14:10:14.880   715   822 E AudioService: message text
+ * 2026-07-14 14:27:36.530 22886 46555 I WifiService: message text
  * ```
+ *
+ * The year-prefixed variant is what some cached-log dumps use.
+ *
+ * Timestamps are stored as milliseconds since 2000-01-01 with real calendar
+ * math. Lines WITHOUT a year are interpreted as year 2000 (a leap year, so
+ * 02-29 always parses) — their values are therefore always smaller than one
+ * year, which is also how [formatTimestamp] decides which style to print.
  *
  * Hand-rolled instead of regex because it runs once per line on files with
  * millions of lines. The caller supplies a reusable [Result] to avoid
@@ -16,7 +24,7 @@ import com.sherlog.model.LogLevel
 object LogcatLineParser {
 
     class Result {
-        /** Milliseconds since Jan 1 of a fixed reference year (year 2000, a leap year). */
+        /** Milliseconds since 2000-01-01 (no-year lines = year 2000). */
         var timestampMs: Long = 0
         var pid: Int = -1
         var tid: Int = -1
@@ -24,33 +32,59 @@ object LogcatLineParser {
         var tag: String = ""
     }
 
-    // Cumulative days before each month in a leap year (logcat timestamps
-    // carry no year, so 02-29 must always be parseable).
-    private val daysBeforeMonth = intArrayOf(0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335)
+    private const val MS_PER_DAY = 86_400_000L
+
+    // Cumulative days before each month, leap and non-leap.
+    private val daysBeforeMonthLeap = intArrayOf(0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335)
+    private val daysBeforeMonthNonLeap = intArrayOf(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
+
+    private fun isLeap(year: Int): Boolean =
+        (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+
+    private fun daysBeforeMonth(year: Int): IntArray =
+        if (isLeap(year)) daysBeforeMonthLeap else daysBeforeMonthNonLeap
+
+    /** Leap years in [1, y-1]. */
+    private fun leapsBefore(y: Int): Int = (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400
+
+    /** Days from 2000-01-01 to the start of [year]. */
+    private fun daysSince2000(year: Int): Int =
+        (year - 2000) * 365 + (leapsBefore(year) - leapsBefore(2000))
 
     /**
      * Parses [line] into [out]. Returns false (leaving [out] undefined) when
-     * the line is not in threadtime format.
+     * the line is not in a threadtime format.
      */
     fun parse(line: String, out: Result): Boolean {
-        // "MM-DD HH:MM:SS.mmm" is 18 chars; the shortest valid line needs
-        // at least pid, tid, level and a tag after it.
         if (line.length < 25) return false
-        if (line[2] != '-' || line[5] != ' ' || line[8] != ':' || line[11] != ':' || line[14] != '.') return false
 
-        val month = digits2(line, 0)
-        val day = digits2(line, 3)
-        val hour = digits2(line, 6)
-        val minute = digits2(line, 9)
-        val second = digits2(line, 12)
+        // Optional "YYYY-" prefix (year-prefixed cached logs).
+        var year = 2000
+        var o = 0
+        if (line[4] == '-' && digits4(line, 0) >= 2000) {
+            year = digits4(line, 0)
+            if (year > 2999) return false
+            o = 5
+            if (line.length < 30) return false
+        }
+
+        if (line[o + 2] != '-' || line[o + 5] != ' ' || line[o + 8] != ':' ||
+            line[o + 11] != ':' || line[o + 14] != '.'
+        ) return false
+
+        val month = digits2(line, o)
+        val day = digits2(line, o + 3)
+        val hour = digits2(line, o + 6)
+        val minute = digits2(line, o + 9)
+        val second = digits2(line, o + 12)
         if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60) return false
-        val ms = digits3(line, 15)
+        val ms = digits3(line, o + 15)
         if (ms < 0) return false
 
-        val dayOfYear = daysBeforeMonth[month - 1] + (day - 1)
-        out.timestampMs = ((((dayOfYear * 24L + hour) * 60 + minute) * 60 + second) * 1000) + ms
+        val days = daysSince2000(year) + daysBeforeMonth(year)[month - 1] + (day - 1)
+        out.timestampMs = days * MS_PER_DAY + (((hour * 60L + minute) * 60 + second) * 1000) + ms
 
-        var i = 18
+        var i = o + 18
         i = skipSpaces(line, i)
         val pidEnd = endOfDigits(line, i)
         if (pidEnd == i) return false
@@ -78,36 +112,67 @@ object LogcatLineParser {
         return true
     }
 
-    /** Parses "MM-DD HH:MM:SS" or "MM-DD HH:MM:SS.mmm" as entered in the time-range filter. */
+    /**
+     * Parses "MM-DD HH:MM:SS[.mmm]" or "YYYY-MM-DD HH:MM:SS[.mmm]" as
+     * entered in the time-range filter.
+     */
     fun parseTimestamp(text: String): Long? {
         val t = text.trim()
-        if (t.length < 14) return null
-        if (t[2] != '-' || t[5] != ' ' || t[8] != ':' || t[11] != ':') return null
-        val month = digits2(t, 0)
-        val day = digits2(t, 3)
-        val hour = digits2(t, 6)
-        val minute = digits2(t, 9)
-        val second = digits2(t, 12)
+        var year = 2000
+        var o = 0
+        if (t.length >= 19 && t[4] == '-' && digits4(t, 0) >= 2000) {
+            year = digits4(t, 0)
+            if (year > 2999) return null
+            o = 5
+        }
+        if (t.length < o + 14) return null
+        if (t[o + 2] != '-' || t[o + 5] != ' ' || t[o + 8] != ':' || t[o + 11] != ':') return null
+        val month = digits2(t, o)
+        val day = digits2(t, o + 3)
+        val hour = digits2(t, o + 6)
+        val minute = digits2(t, o + 9)
+        val second = digits2(t, o + 12)
         if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60) return null
-        val ms = if (t.length >= 18 && t[14] == '.') digits3(t, 15).coerceAtLeast(0) else 0
-        val dayOfYear = daysBeforeMonth[month - 1] + (day - 1)
-        return ((((dayOfYear * 24L + hour) * 60 + minute) * 60 + second) * 1000) + ms
+        val ms = if (t.length >= o + 18 && t[o + 14] == '.') digits3(t, o + 15).coerceAtLeast(0) else 0
+        val days = daysSince2000(year) + daysBeforeMonth(year)[month - 1] + (day - 1)
+        return days * MS_PER_DAY + (((hour * 60L + minute) * 60 + second) * 1000) + ms
     }
 
-    /** Formats a timestamp produced by [parse] back to "MM-DD HH:MM:SS.mmm". */
+    /**
+     * Formats a timestamp produced by [parse]. Values within the reference
+     * year (no-year source lines) print as "MM-DD HH:MM:SS.mmm"; anything
+     * later prints as "YYYY-MM-DD HH:MM:SS.mmm".
+     */
     fun formatTimestamp(timestampMs: Long): String {
         var rest = timestampMs
         val ms = (rest % 1000).toInt(); rest /= 1000
         val second = (rest % 60).toInt(); rest /= 60
         val minute = (rest % 60).toInt(); rest /= 60
         val hour = (rest % 24).toInt(); rest /= 24
-        var dayOfYear = rest.toInt()
+        var days = rest.toInt()
+
+        var year = 2000
+        while (true) {
+            val inYear = if (isLeap(year)) 366 else 365
+            if (days < inYear) break
+            days -= inYear
+            year++
+        }
+        val table = daysBeforeMonth(year)
         var month = 12
         for (m in 1..12) {
-            if (dayOfYear < daysBeforeMonth.getOrElse(m) { 366 }) { month = m; break }
+            if (days < table.getOrElse(m) { 366 }) {
+                month = m
+                break
+            }
         }
-        dayOfYear -= daysBeforeMonth[month - 1]
-        return "%02d-%02d %02d:%02d:%02d.%03d".format(month, dayOfYear + 1, hour, minute, second, ms)
+        days -= table[month - 1]
+
+        return if (year == 2000) {
+            "%02d-%02d %02d:%02d:%02d.%03d".format(month, days + 1, hour, minute, second, ms)
+        } else {
+            "%04d-%02d-%02d %02d:%02d:%02d.%03d".format(year, month, days + 1, hour, minute, second, ms)
+        }
     }
 
     private fun digits2(s: String, at: Int): Int {
@@ -121,6 +186,17 @@ object LogcatLineParser {
         val a = s[at]; val b = s[at + 1]; val c = s[at + 2]
         if (a !in '0'..'9' || b !in '0'..'9' || c !in '0'..'9') return -1
         return (a - '0') * 100 + (b - '0') * 10 + (c - '0')
+    }
+
+    private fun digits4(s: String, at: Int): Int {
+        if (at + 3 >= s.length) return -1
+        var value = 0
+        for (i in at until at + 4) {
+            val c = s[i]
+            if (c !in '0'..'9') return -1
+            value = value * 10 + (c - '0')
+        }
+        return value
     }
 
     private fun skipSpaces(s: String, from: Int): Int {

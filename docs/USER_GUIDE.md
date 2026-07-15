@@ -15,8 +15,10 @@ Or build a Windows installer once and use it from the Start menu:
 
 ## Opening a log
 
-Click **Open Log** (top-left) and pick a `.txt` or `.log` logcat dump. Any
-size works — a 150 MB file indexes in under a second, gigabyte files in a few
+Click **Open Log** (top-left) and pick a `.txt` or `.log` logcat dump —
+both classic logcat timestamps (`07-12 14:10:14.880`) and cached logs
+with year-prefixed timestamps (`2026-07-14 14:27:36.530`) are
+supported. Any size works — a 150 MB file indexes in under a second, gigabyte files in a few
 seconds with a progress bar. While it loads you'll see
 `Indexing: X / Y MB` at the bottom; you can Cancel.
 
