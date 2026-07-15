@@ -11,6 +11,7 @@ import com.sherlog.filter.FilterEngine
 import com.sherlog.filter.FilterState
 import com.sherlog.filter.HighlightCounter
 import com.sherlog.filter.Preset
+import com.sherlog.filter.TagMode
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,7 @@ class AppState(private val scope: CoroutineScope) {
 
     // Filter inputs (raw UI text; compiled into FilterState on apply)
     var selectedTags by mutableStateOf(emptySet<String>())
+    var tagMode by mutableStateOf(TagMode.SHOW_ONLY)
     var pidText by mutableStateOf("")
     var timeFromText by mutableStateOf("")
     var timeToText by mutableStateOf("")
@@ -135,6 +137,7 @@ class AppState(private val scope: CoroutineScope) {
 
     fun clearFilters() {
         selectedTags = emptySet()
+        tagMode = TagMode.SHOW_ONLY
         pidText = ""
         timeFromText = index?.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
         timeToText = index?.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
@@ -215,7 +218,8 @@ class AppState(private val scope: CoroutineScope) {
                 ?: run { statusMessage = "Invalid time (use MM-DD HH:MM:SS): \"$it\""; return null }
         }
         return FilterState(
-            includedTags = selectedTags,
+            selectedTags = selectedTags,
+            tagMode = tagMode,
             excludeTexts = excludeText.split(',').map { it.trim() }.filter { it.isNotEmpty() },
             includeTexts = includeText.split(',').map { it.trim() }.filter { it.isNotEmpty() },
             pids = pids,

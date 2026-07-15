@@ -48,9 +48,18 @@ class FilterEngineTest {
     }
 
     @Test
-    fun `include tags`() {
-        val result = apply(FilterState(includedTags = setOf("OkHttp", "NetworkMonitor")))
+    fun `show-only mode keeps checked tags and drops unparsed lines`() {
+        val result = apply(FilterState(selectedTags = setOf("OkHttp", "NetworkMonitor")))
         assertContentEquals(intArrayOf(2, 3, 5), result)
+    }
+
+    @Test
+    fun `hide mode drops checked tags but keeps unparsed lines`() {
+        val result = apply(
+            FilterState(selectedTags = setOf("CCodec", "AudioService"), tagMode = TagMode.HIDE),
+        )
+        // Lines 0 and 1 are hidden; the unparsed marker (line 4) survives.
+        assertContentEquals(intArrayOf(2, 3, 4, 5, 6), result)
     }
 
     @Test
@@ -94,7 +103,7 @@ class FilterEngineTest {
         assertContentEquals(intArrayOf(2, 3), apply(FilterState(searchQuery = "timeout")))
         assertContentEquals(
             intArrayOf(2),
-            apply(FilterState(searchQuery = "timeout", includedTags = setOf("OkHttp"))),
+            apply(FilterState(searchQuery = "timeout", selectedTags = setOf("OkHttp"))),
         )
     }
 

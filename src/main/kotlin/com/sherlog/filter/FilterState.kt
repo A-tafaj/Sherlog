@@ -9,9 +9,19 @@ import com.sherlog.model.LogLevel
  * [excludeTexts], [includeTexts] and [searchQuery] need line text, which
  * triggers a streaming pass over the file.
  */
+/** How the checked tags in the tag list are applied. */
+enum class TagMode {
+    /** Keep only lines whose tag is checked (empty selection = keep all). */
+    SHOW_ONLY,
+
+    /** Drop lines whose tag is checked; unparsed lines are unaffected. */
+    HIDE,
+}
+
 data class FilterState(
-    /** Tags to keep. Empty = all tags. */
-    val includedTags: Set<String> = emptySet(),
+    /** Tags checked in the tag list; interpreted per [tagMode]. Empty = no tag filter. */
+    val selectedTags: Set<String> = emptySet(),
+    val tagMode: TagMode = TagMode.SHOW_ONLY,
     /** Case-insensitive substrings; any match drops the line ("remove all lines containing these strings"). */
     val excludeTexts: List<String> = emptyList(),
     /** Case-insensitive substrings; when non-empty a line must contain at least one (crash preset). */

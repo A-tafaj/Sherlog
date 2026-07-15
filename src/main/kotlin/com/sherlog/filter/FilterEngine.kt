@@ -39,8 +39,12 @@ object FilterEngine {
         val result = IntList()
 
         // --- Metadata predicate, from index arrays only ---
-        val tagIdFilter: BooleanArray? = if (state.includedTags.isEmpty()) null else {
-            BooleanArray(index.tags.size) { index.tags[it] in state.includedTags }
+        // tagIdFilter marks the tags that are ALLOWED, whichever the mode.
+        val tagIdFilter: BooleanArray? = if (state.selectedTags.isEmpty()) null else {
+            BooleanArray(index.tags.size) {
+                val checked = index.tags[it] in state.selectedTags
+                if (state.tagMode == TagMode.HIDE) !checked else checked
+            }
         }
         val levelFilter: BooleanArray? =
             if (state.levels.size == com.sherlog.model.LogLevel.entries.size) null
@@ -54,7 +58,13 @@ object FilterEngine {
             if (levelFilter != null && !levelFilter[index.levels[i].toInt()]) return false
             if (tagIdFilter != null) {
                 val tagId = index.tagIds[i]
-                if (tagId < 0 || !tagIdFilter[tagId]) return false
+                if (tagId < 0) {
+                    // Unparsed lines have no tag: hidden by a show-only
+                    // selection, untouched by a hide selection.
+                    if (state.tagMode == TagMode.SHOW_ONLY) return false
+                } else if (!tagIdFilter[tagId]) {
+                    return false
+                }
             }
             if (state.pids.isNotEmpty() && index.pids[i] !in state.pids) return false
             if (from != null || to != null) {

@@ -37,7 +37,7 @@ class LargeFileSmokeTest {
         // Metadata-only filter (should be near-instant)
         var metadataResult: IntArray
         val metaMs = measureTimeMillis {
-            metadataResult = FilterEngine.apply(index, FilterState(includedTags = setOf("OkHttp")))
+            metadataResult = FilterEngine.apply(index, FilterState(selectedTags = setOf("OkHttp")))
         }
         println("Metadata filter: %,d matches in %,d ms".format(metadataResult.size, metaMs))
 

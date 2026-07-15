@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sherlog.filter.TagMode
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
 
@@ -56,6 +58,12 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
                     Text("Clear (${state.selectedTags.size})", fontSize = 11.sp)
                 }
             }
+        }
+        // How the checked tags apply. Flipping keeps the checked set, so
+        // Show-only <-> Hide doubles as an "invert" gesture.
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TagModeChip(state, TagMode.SHOW_ONLY, "Show only checked")
+            TagModeChip(state, TagMode.HIDE, "Hide checked")
         }
         // Tag list — none selected means "show all tags". Both this and the
         // fields section below carry a weight: an unweighted fields Column
@@ -150,6 +158,20 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
             SmallField(state, state.includeText, { state.includeText = it }, "FATAL EXCEPTION, Caused by…")
         }
     }
+}
+
+@Composable
+private fun TagModeChip(state: AppState, mode: TagMode, label: String) {
+    FilterChip(
+        selected = state.tagMode == mode,
+        onClick = {
+            if (state.tagMode != mode) {
+                state.tagMode = mode
+                state.scheduleApply()
+            }
+        },
+        label = { Text(label, fontSize = 11.sp) },
+    )
 }
 
 /**
