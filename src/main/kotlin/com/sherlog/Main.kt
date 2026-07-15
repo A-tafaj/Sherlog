@@ -43,7 +43,10 @@ fun main() = application {
                     },
                     onExportClick = {
                         val dialog = FileDialog(window, "Export Filtered Logs", FileDialog.SAVE)
-                        dialog.file = "cleaned_logcat.txt"
+                        // Default to a name derived from the source so a re-export
+                        // doesn't collide with the file currently open.
+                        dialog.file = state.index?.file?.nameWithoutExtension
+                            ?.let { "${it}_filtered.txt" } ?: "cleaned_logcat.txt"
                         dialog.isVisible = true
                         val dir = dialog.directory
                         val name = dialog.file

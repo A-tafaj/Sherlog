@@ -14,6 +14,7 @@ import com.sherlog.filter.Preset
 import com.sherlog.filter.TagMode
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -151,6 +152,15 @@ class AppState(private val scope: CoroutineScope) {
         val idx = index ?: return
         val lines = filteredLines
         cancelWork()
+        // Exporting onto the currently open file is allowed (the exporter
+        // writes via a temp file), but our own read handle must be released
+        // first or the final replace fails on Windows — and afterwards the
+        // on-disk content no longer matches the index, so re-open it.
+        val ontoOpenFile = runCatching { idx.file.canonicalFile == target.canonicalFile }.getOrDefault(false)
+        if (ontoOpenFile) {
+            provider?.close()
+            provider = null
+        }
         workJob = scope.launch(Dispatchers.IO) {
             try {
                 LogExporter.export(idx, lines, target) { done, total ->
@@ -158,8 +168,15 @@ class AppState(private val scope: CoroutineScope) {
                     progressLabel = "Exporting: %,d / %,d lines".format(done, total)
                 }
                 statusMessage = "Exported %,d lines to ${target.name}".format(lines.size)
+                if (ontoOpenFile) openFile(target)
+            } catch (e: CancellationException) {
+                if (ontoOpenFile) openFile(idx.file) // restore the released provider
+                throw e
             } catch (e: Exception) {
-                if (isActive) statusMessage = "Export failed: ${e.message}"
+                if (isActive) {
+                    statusMessage = "Export failed: ${e.message}"
+                    if (ontoOpenFile) openFile(idx.file) // restore the released provider
+                }
             } finally {
                 progress = null
             }

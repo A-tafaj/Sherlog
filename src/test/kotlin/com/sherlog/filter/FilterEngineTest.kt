@@ -137,6 +137,28 @@ class FilterEngineTest {
     }
 
     @Test
+    fun `exporting onto the source file itself must not destroy the data`() = runBlocking {
+        // Regression: writing directly to the target used to truncate the
+        // source before reading it, producing an empty file.
+        val source = File.createTempFile("selfexport", ".txt")
+        try {
+            source.writeText(content)
+            val idx = com.sherlog.core.LogIndexer.index(source)
+            val lines = runBlocking { FilterEngine.apply(idx, FilterState(searchQuery = "timeout")) }
+            LogExporter.export(idx, lines, source)
+            assertEquals(
+                listOf(
+                    "07-12 14:10:18.100  1913 18142 E OkHttp: request timeout",
+                    "07-12 14:10:19.000  1913 18143 W NetworkMonitor: DNS TIMEOUT fail",
+                ),
+                source.readLines(),
+            )
+        } finally {
+            source.delete()
+        }
+    }
+
+    @Test
     fun `export writes exactly the filtered lines`() = runBlocking {
         val target = File.createTempFile("export", ".txt")
         try {
