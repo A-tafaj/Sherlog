@@ -170,13 +170,17 @@ private fun StatusBar(state: AppState) {
             Text(state.progressLabel, fontSize = 11.sp)
             TextButton(onClick = { state.cancelWork() }) { Text("Cancel", fontSize = 11.sp) }
         } else {
+            Text(state.statusMessage, fontSize = 11.sp)
+            Spacer(Modifier.weight(1f))
             val needle = state.selectionHighlight.let { if (it.length > 24) it.take(24) + "…" else it }
-            val highlightPart = when {
-                state.highlightCounting -> " · counting \"$needle\"…"
-                state.highlightCount != null -> " · %,d lines contain \"%s\"".format(state.highlightCount, needle)
-                else -> ""
+            val highlightText = when {
+                state.highlightCounting -> "counting \"$needle\"…"
+                state.highlightCount != null -> "%,d lines contain \"%s\"".format(state.highlightCount, needle)
+                else -> null
             }
-            Text(state.statusMessage + highlightPart, fontSize = 11.sp)
+            if (highlightText != null) {
+                Text(highlightText, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }
