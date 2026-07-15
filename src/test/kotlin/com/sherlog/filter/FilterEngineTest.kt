@@ -117,6 +117,17 @@ class FilterEngineTest {
     }
 
     @Test
+    fun `highlight counter counts lines containing needle case-insensitively`() = runBlocking {
+        val all = apply(FilterState.EMPTY)
+        assertEquals(2, HighlightCounter.count(index, all, "timeout")) // "timeout" + "TIMEOUT"
+        assertEquals(2, HighlightCounter.count(index, all, "OkHttp"))
+        assertEquals(0, HighlightCounter.count(index, all, "nonexistent"))
+        // Relative to the filtered set, not the whole file.
+        val onlyPid715 = apply(FilterState(pids = setOf(715)))
+        assertEquals(0, HighlightCounter.count(index, onlyPid715, "timeout"))
+    }
+
+    @Test
     fun `export writes exactly the filtered lines`() = runBlocking {
         val target = File.createTempFile("export", ".txt")
         try {

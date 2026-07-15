@@ -60,7 +60,7 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                             searchQuery = state.appliedFilter.searchQuery,
                             searchIsRegex = state.appliedFilter.searchIsRegex,
                             selectionHighlight = state.selectionHighlight,
-                            onSelectionChange = { state.selectionHighlight = it },
+                            onSelectionChange = { state.onViewerSelection(it) },
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                     }
@@ -170,7 +170,13 @@ private fun StatusBar(state: AppState) {
             Text(state.progressLabel, fontSize = 11.sp)
             TextButton(onClick = { state.cancelWork() }) { Text("Cancel", fontSize = 11.sp) }
         } else {
-            Text(state.statusMessage, fontSize = 11.sp)
+            val needle = state.selectionHighlight.let { if (it.length > 24) it.take(24) + "…" else it }
+            val highlightPart = when {
+                state.highlightCounting -> " · counting \"$needle\"…"
+                state.highlightCount != null -> " · %,d lines contain \"%s\"".format(state.highlightCount, needle)
+                else -> ""
+            }
+            Text(state.statusMessage + highlightPart, fontSize = 11.sp)
         }
     }
 }

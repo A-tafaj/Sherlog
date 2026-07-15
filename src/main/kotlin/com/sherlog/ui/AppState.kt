@@ -9,6 +9,7 @@ import com.sherlog.core.LogIndexer
 import com.sherlog.export.LogExporter
 import com.sherlog.filter.FilterEngine
 import com.sherlog.filter.FilterState
+import com.sherlog.filter.HighlightCounter
 import com.sherlog.filter.Preset
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
@@ -47,6 +48,14 @@ class AppState(private val scope: CoroutineScope) {
 
     /** Text currently selected in the viewer; all its occurrences are highlighted. */
     var selectionHighlight by mutableStateOf("")
+        private set
+
+    /** Lines (within the current filter) containing [selectionHighlight]; null when inactive. */
+    var highlightCount by mutableStateOf<Int?>(null)
+        private set
+    var highlightCounting by mutableStateOf(false)
+        private set
+    private var highlightJob: Job? = null
 
     // Results
     var appliedFilter by mutableStateOf(FilterState.EMPTY)
@@ -75,6 +84,9 @@ class AppState(private val scope: CoroutineScope) {
         provider = null
         filteredLines = IntArray(0)
         selectedTags = emptySet()
+        selectionHighlight = ""
+        highlightCount = null
+        highlightCounting = false
         statusMessage = "Indexing ${file.name}…"
         workJob = scope.launch(Dispatchers.IO) {
             try {
@@ -151,6 +163,37 @@ class AppState(private val scope: CoroutineScope) {
         }
     }
 
+    /** Called by the viewer whenever the user's text selection changes. */
+    fun onViewerSelection(text: String) {
+        if (text == selectionHighlight) return
+        selectionHighlight = text
+        scheduleHighlightCount()
+    }
+
+    /**
+     * Recounts how many filtered lines contain the selected text. Debounced:
+     * dragging a selection fires this on every change, and the count needs a
+     * streaming pass over the file.
+     */
+    private fun scheduleHighlightCount(debounceMs: Long = 400) {
+        highlightJob?.cancel()
+        val idx = index
+        val needle = selectionHighlight
+        if (idx == null || needle.isEmpty()) {
+            highlightCount = null
+            highlightCounting = false
+            return
+        }
+        highlightCounting = true
+        highlightJob = scope.launch(Dispatchers.IO) {
+            delay(debounceMs)
+            val result = runCatching { HighlightCounter.count(idx, filteredLines, needle) }
+            if (!isActive) return@launch
+            highlightCount = result.getOrNull()
+            highlightCounting = false
+        }
+    }
+
     fun cancelWork() {
         workJob?.cancel()
         workJob = null
@@ -199,5 +242,7 @@ class AppState(private val scope: CoroutineScope) {
             append("%,d / %,d lines".format(result.size, idx.lineCount))
             if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
         }
+        // The highlight count is relative to the filtered set; recount.
+        if (selectionHighlight.isNotEmpty()) scheduleHighlightCount(0)
     }
 }
