@@ -110,6 +110,17 @@ object LogIndexer {
         // Final line without a trailing newline.
         if (carryLen > 0) addLine(carry, 0, carryLen)
         offsets.add(totalBytes) // sentinel
+        // Unparsed lines BEFORE the first parsed line (e.g. a leading
+        // "--------- beginning of main" marker) inherited 0; backfill them
+        // with the first parsed timestamp so time filters don't drop them.
+        run {
+            var i = 0
+            while (i < tagIds.size && tagIds[i] < 0) i++
+            if (i < tagIds.size) {
+                val firstParsedTs = timestamps[i]
+                for (j in 0 until i) timestamps[j] = firstParsedTs
+            }
+        }
         onProgress(totalBytes, totalBytes)
 
         return LogIndex(

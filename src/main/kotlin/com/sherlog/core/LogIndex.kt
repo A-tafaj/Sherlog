@@ -26,14 +26,25 @@ class LogIndex(
 ) {
     val lineCount: Int get() = offsets.size - 1
 
-    /** Timestamp of the first/last parsed line; null when no line parsed. */
+    /**
+     * Minimum/maximum timestamp over all parsed lines; null when no line
+     * parsed. These are min/max, NOT first/last by position: logcat dumps
+     * concatenate several ring buffers ("beginning of main/system/crash"),
+     * each restarting at an earlier time, so file order is not time order.
+     */
     val firstTimestampMs: Long? by lazy {
-        for (i in 0 until lineCount) if (tagIds[i] >= 0) return@lazy timestamps[i]
-        null
+        var min = Long.MAX_VALUE
+        for (i in 0 until lineCount) {
+            if (tagIds[i] >= 0 && timestamps[i] < min) min = timestamps[i]
+        }
+        if (min == Long.MAX_VALUE) null else min
     }
     val lastTimestampMs: Long? by lazy {
-        for (i in lineCount - 1 downTo 0) if (tagIds[i] >= 0) return@lazy timestamps[i]
-        null
+        var max = Long.MIN_VALUE
+        for (i in 0 until lineCount) {
+            if (tagIds[i] >= 0 && timestamps[i] > max) max = timestamps[i]
+        }
+        if (max == Long.MIN_VALUE) null else max
     }
 
     val errorCount: Int by lazy { countLevel(LogLevel.ERROR) + countLevel(LogLevel.FATAL) }

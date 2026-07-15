@@ -49,8 +49,10 @@ aren't standard logcat format, e.g. stack-trace dumps).
 **PID** — comma-separated process IDs, e.g. `1913, 6432`.
 
 **Time range** — the From/To fields come pre-filled with the file's full
-span. Either edit them (`MM-DD HH:MM:SS`, optional `.mmm`) or drag the
-two-thumb slider below; slider and fields stay in sync both ways.
+span. Either edit them (`MM-DD HH:MM:SS`, optional `.mmm` — note logcat uses
+the 24-hour clock, so 1 PM is `13:00`) or drag the two-thumb slider below;
+slider and fields stay in sync both ways. For precise windows on multi-day
+logs, typing the times is more accurate than dragging.
 
 **Exclude lines containing** — comma-separated substrings; any line
 containing one of them (anywhere in the line, case-insensitive) is removed.

@@ -30,7 +30,8 @@
 - **PIDs** — comma-separated list.
 - **Levels** — E/W/I/D/V + Fatal + Other checkboxes.
 - **Time range** — From/To fields (`MM-DD HH:MM:SS[.mmm]`) pre-filled with
-  the file's actual span, plus a two-thumb range slider synced both ways.
+  the file's actual span (true min/max — multi-buffer dumps are not
+  time-ordered), plus a two-thumb range slider synced both ways.
 - **Exclude lines containing** — case-insensitive substrings, whole line.
 - **Keep only lines containing** — case-insensitive substrings, whole line.
 - Metadata filters are instant (~14 ms on 2M lines); text filters stream the

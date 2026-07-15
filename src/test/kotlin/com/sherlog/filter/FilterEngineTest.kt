@@ -137,6 +137,28 @@ class FilterEngineTest {
     }
 
     @Test
+    fun `prefilled full time range keeps every line even in non-monotonic dumps`() = runBlocking {
+        val source = File.createTempFile("multibuffer", ".txt")
+        try {
+            source.writeText(
+                """
+                07-12 14:00:00.000   100   100 I SystemServer: boot
+                --------- beginning of main
+                07-12 13:00:00.000   200   200 D Volley: connect
+                """.trimIndent() + "\n",
+            )
+            val idx = com.sherlog.core.LogIndexer.index(source)
+            val result = FilterEngine.apply(
+                idx,
+                FilterState(timeFromMs = idx.firstTimestampMs, timeToMs = idx.lastTimestampMs),
+            )
+            assertContentEquals(intArrayOf(0, 1, 2), result)
+        } finally {
+            source.delete()
+        }
+    }
+
+    @Test
     fun `exporting onto the source file itself must not destroy the data`() = runBlocking {
         // Regression: writing directly to the target used to truncate the
         // source before reading it, producing an empty file.

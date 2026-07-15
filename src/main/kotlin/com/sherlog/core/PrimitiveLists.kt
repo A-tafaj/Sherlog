@@ -16,6 +16,10 @@ class LongList(initialCapacity: Int = 1 shl 16) {
 
     operator fun get(index: Int): Long = data[index]
 
+    operator fun set(index: Int, value: Long) {
+        data[index] = value
+    }
+
     fun toArray(): LongArray = data.copyOf(size)
 }
 

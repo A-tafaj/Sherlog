@@ -77,6 +77,34 @@ class LogIndexerTest {
     }
 
     @Test
+    fun `non-monotonic multi-buffer dumps get true min-max timestamps`() = runBlocking {
+        // Regression: logcat dumps concatenate ring buffers, each restarting
+        // at an earlier time. first/last used to be taken by file position,
+        // so the pre-filled time range silently dropped whole buffers.
+        val file = logFile(
+            """
+            --------- beginning of system
+            07-12 14:00:00.000   100   100 I SystemServer: boot
+            07-12 15:00:00.000   100   100 I SystemServer: late event
+            --------- beginning of main
+            07-12 13:00:00.000   200   200 D Volley: connect
+            07-12 13:30:00.000   200   200 D Volley: emit
+            """.trimIndent() + "\n",
+        )
+        val index = LogIndexer.index(file)
+        assertEquals(
+            com.sherlog.parser.LogcatLineParser.parseTimestamp("07-12 13:00:00"),
+            index.firstTimestampMs,
+        )
+        assertEquals(
+            com.sherlog.parser.LogcatLineParser.parseTimestamp("07-12 15:00:00"),
+            index.lastTimestampMs,
+        )
+        // Leading unparsed marker inherits the first parsed timestamp.
+        assertEquals(index.timestamps[1], index.timestamps[0])
+    }
+
+    @Test
     fun `handles lines spanning read buffers`() = runBlocking {
         // A message longer than the carry buffer's initial 4KB.
         val long = "07-12 14:10:18.100  1913 18142 E OkHttp: " + "x".repeat(10_000)
