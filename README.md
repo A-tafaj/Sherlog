@@ -3,6 +3,9 @@
 Desktop GUI tool (Kotlin + Compose Desktop) for analyzing and cleaning large
 Android logcat files — a replacement for manual `findstr`/regex log cleanup.
 
+Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
+[Why this tool](docs/WHY_THIS_TOOL.md).
+
 ## Features (MVP)
 
 - Open `.txt` / `.log` logcat dumps of any size (1GB+); the file is **indexed,
