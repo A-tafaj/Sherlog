@@ -59,3 +59,8 @@ threadtime format (buffer markers, raw stack-trace dumps) are kept with level
 ```
 
 Requires JDK 17+.
+
+## License
+
+Released under the [MIT License](LICENSE) — free to use, modify, and
+distribute. Contributions welcome.
