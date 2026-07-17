@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.AnnotatedString
@@ -52,6 +53,8 @@ private val levelColors = mapOf(
 
 private val searchHighlightStyle = SpanStyle(background = Color(0x66FFEB3B), color = Color.White)
 private val selectionHighlightStyle = SpanStyle(background = Color(0x5900BCD4), color = Color.White)
+// The single occurrence-line the next/prev arrows are currently sitting on.
+private val activeSelectionHighlightStyle = SpanStyle(background = Color(0xE6FF9800), color = Color.Black)
 
 /** Minimum selected characters before occurrence highlighting kicks in. */
 private const val MIN_HIGHLIGHT_LENGTH = 2
@@ -65,10 +68,11 @@ fun LogViewer(
     searchQuery: String,
     searchIsRegex: Boolean,
     selectionHighlight: String,
+    currentMatchPosition: Int,
     onSelectionChange: (String) -> Unit,
+    listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
     val matcher = remember(searchQuery, searchIsRegex) {
         if (searchQuery.isBlank()) null else FilterEngine.SearchMatcher(searchQuery, searchIsRegex)
     }
@@ -77,7 +81,7 @@ fun LogViewer(
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 12.dp)) {
             items(count = filteredLines.size, key = { filteredLines[it] }) { pos ->
                 val lineIndex = filteredLines[pos]
-                LogRow(index, provider, lineIndex, matcher, selectionHighlight, onSelectionChange)
+                LogRow(index, provider, lineIndex, matcher, selectionHighlight, pos == currentMatchPosition, onSelectionChange)
             }
         }
         VerticalScrollbar(
@@ -91,7 +95,12 @@ fun LogViewer(
  * One log line as a read-only text field. A text field (rather than plain
  * Text in a SelectionContainer) is what lets us observe the user's selection:
  * selecting a tag or phrase highlights every occurrence of it across the
- * visible lines; collapsing the selection (a plain click) clears it.
+ * visible lines.
+ *
+ * Clearing is driven by focus *gain*, not by the selection collapsing: a
+ * plain click makes a row newly focused with no selection, so we clear then.
+ * Clicking the status-bar next/prev arrows never gives a log row focus (and
+ * the collapse it causes is ignored), so navigating keeps the highlight.
  */
 @Composable
 private fun LogRow(
@@ -100,6 +109,7 @@ private fun LogRow(
     lineIndex: Int,
     matcher: FilterEngine.SearchMatcher?,
     selectionHighlight: String,
+    isCurrentMatch: Boolean,
     onSelectionChange: (String) -> Unit,
 ) {
     val text by produceState("…", lineIndex, provider) {
@@ -115,8 +125,8 @@ private fun LogRow(
         LogLevel.WARN -> Color(0x14FFA000)
         else -> Color.Transparent
     }
-    val transformation = remember(matcher, selectionHighlight) {
-        LogHighlightTransformation(matcher, selectionHighlight)
+    val transformation = remember(matcher, selectionHighlight, isCurrentMatch) {
+        LogHighlightTransformation(matcher, selectionHighlight, isCurrentMatch)
     }
 
     BasicTextField(
@@ -125,11 +135,12 @@ private fun LogRow(
             // readOnly guarantees the text is unchanged; only selection moves.
             fieldValue = TextFieldValue(text, new.selection)
             val sel = new.selection
-            if (sel.collapsed) {
-                onSelectionChange("")
-            } else {
+            // Only a real (non-collapsed) selection updates the highlight. A
+            // collapse is ignored here — clearing is handled on focus gain so
+            // that the collapse caused by clicking the nav arrows is harmless.
+            if (!sel.collapsed) {
                 val selected = text.substring(sel.min, sel.max).trim()
-                onSelectionChange(if (selected.length in MIN_HIGHLIGHT_LENGTH..MAX_HIGHLIGHT_LENGTH) selected else "")
+                if (selected.length in MIN_HIGHLIGHT_LENGTH..MAX_HIGHLIGHT_LENGTH) onSelectionChange(selected)
             }
         },
         readOnly = true,
@@ -141,21 +152,35 @@ private fun LogRow(
         ),
         cursorBrush = SolidColor(color),
         visualTransformation = transformation,
-        modifier = Modifier.fillMaxWidth().background(rowBackground).padding(horizontal = 8.dp, vertical = 1.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(rowBackground)
+            .padding(horizontal = 8.dp, vertical = 1.dp)
+            .onFocusChanged { focus ->
+                // A plain click gives this row focus with a collapsed (empty)
+                // selection -> clear the highlight. Word-selection sets it via
+                // onValueChange afterwards. Arrow clicks don't focus any row.
+                if (focus.isFocused && fieldValue.selection.collapsed) onSelectionChange("")
+            },
     )
 }
 
 /**
  * Paints search matches (yellow) and occurrences of the user's current
- * selection (cyan) without altering the text, so offsets map 1:1.
+ * selection without altering the text, so offsets map 1:1. On the line the
+ * next/prev arrows are currently sitting on ([activeSelection]) the selection
+ * occurrences are painted amber instead of cyan, so it stands out from
+ * neighbouring matches.
  */
 private class LogHighlightTransformation(
     private val matcher: FilterEngine.SearchMatcher?,
     private val selection: String,
+    private val activeSelection: Boolean,
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
+        val selStyle = if (activeSelection) activeSelectionHighlightStyle else selectionHighlightStyle
         val styled = buildAnnotatedString {
             append(raw)
             matcher?.regex?.let { regex ->
@@ -166,7 +191,7 @@ private class LogHighlightTransformation(
             if (selection.length >= MIN_HIGHLIGHT_LENGTH) {
                 var i = raw.indexOf(selection, 0, ignoreCase = true)
                 while (i >= 0) {
-                    addStyle(selectionHighlightStyle, i, i + selection.length)
+                    addStyle(selStyle, i, i + selection.length)
                     i = raw.indexOf(selection, i + selection.length, ignoreCase = true)
                 }
             }
@@ -175,9 +200,11 @@ private class LogHighlightTransformation(
     }
 
     override fun equals(other: Any?): Boolean =
-        other is LogHighlightTransformation && other.matcher == matcher && other.selection == selection
+        other is LogHighlightTransformation && other.matcher == matcher &&
+            other.selection == selection && other.activeSelection == activeSelection
 
-    override fun hashCode(): Int = 31 * (matcher?.hashCode() ?: 0) + selection.hashCode()
+    override fun hashCode(): Int =
+        31 * (31 * (matcher?.hashCode() ?: 0) + selection.hashCode()) + activeSelection.hashCode()
 }
 
 @Composable

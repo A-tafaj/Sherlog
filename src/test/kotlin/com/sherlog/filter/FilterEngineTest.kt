@@ -128,12 +128,21 @@ class FilterEngineTest {
     @Test
     fun `highlight counter counts lines containing needle case-insensitively`() = runBlocking {
         val all = apply(FilterState.EMPTY)
-        assertEquals(2, HighlightCounter.count(index, all, "timeout")) // "timeout" + "TIMEOUT"
-        assertEquals(2, HighlightCounter.count(index, all, "OkHttp"))
-        assertEquals(0, HighlightCounter.count(index, all, "nonexistent"))
+        assertEquals(2, HighlightCounter.matches(index, all, "timeout").size) // "timeout" + "TIMEOUT"
+        assertEquals(2, HighlightCounter.matches(index, all, "OkHttp").size)
+        assertEquals(0, HighlightCounter.matches(index, all, "nonexistent").size)
         // Relative to the filtered set, not the whole file.
         val onlyPid715 = apply(FilterState(pids = setOf(715)))
-        assertEquals(0, HighlightCounter.count(index, onlyPid715, "timeout"))
+        assertEquals(0, HighlightCounter.matches(index, onlyPid715, "timeout").size)
+    }
+
+    @Test
+    fun `highlight counter returns positions within the filtered list`() = runBlocking {
+        val all = apply(FilterState.EMPTY)
+        val hits = HighlightCounter.matches(index, all, "timeout")
+        // Each returned position indexes into the filtered array and its line contains the needle.
+        for (pos in hits) assertEquals(true, pos in all.indices)
+        assertEquals(2, hits.size)
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.sherlog.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -25,15 +28,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.filter.Preset
+import kotlinx.coroutines.launch
 
 @Composable
 fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
+    // Hoisted here so the status-bar next/prev buttons can scroll the viewer.
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column {
             TopBar(state, onOpenClick, onExportClick)
@@ -60,14 +70,21 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                             searchQuery = state.appliedFilter.searchQuery,
                             searchIsRegex = state.appliedFilter.searchIsRegex,
                             selectionHighlight = state.selectionHighlight,
+                            currentMatchPosition = state.currentMatchPosition,
                             onSelectionChange = { state.onViewerSelection(it) },
+                            listState = listState,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                     }
                 }
             }
             HorizontalDivider()
-            StatusBar(state)
+            StatusBar(
+                state,
+                onPrevMatch = { state.prevMatch()?.let { pos -> scope.launch { listState.animateScrollToItem(pos) } } },
+                onNextMatch = { state.nextMatch()?.let { pos -> scope.launch { listState.animateScrollToItem(pos) } } },
+                onClearMatch = { state.clearHighlight() },
+            )
         }
     }
 }
@@ -158,7 +175,12 @@ private fun SearchBar(state: AppState) {
 }
 
 @Composable
-private fun StatusBar(state: AppState) {
+private fun StatusBar(
+    state: AppState,
+    onPrevMatch: () -> Unit,
+    onNextMatch: () -> Unit,
+    onClearMatch: () -> Unit,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -178,9 +200,42 @@ private fun StatusBar(state: AppState) {
                 state.highlightCount != null -> "%,d lines contain \"%s\"".format(state.highlightCount, needle)
                 else -> null
             }
-            if (highlightText != null) {
+            if (highlightText != null && !state.highlightCounting) {
+                Text(highlightText, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    if ((state.highlightCount ?: 0) > 0) {
+                        if (state.currentMatchIndex >= 0) {
+                            Text(
+                                "${state.currentMatchIndex + 1} / ${state.highlightMatches.size}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        NavArrow("▲", MaterialTheme.colorScheme.primary, onPrevMatch)
+                        NavArrow("▼", MaterialTheme.colorScheme.primary, onNextMatch)
+                    }
+                    NavArrow("✕", MaterialTheme.colorScheme.onSurfaceVariant, onClearMatch)
+                }
+            } else if (highlightText != null) {
                 Text(highlightText, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
             }
         }
     }
+}
+
+/** Compact clickable glyph used for previous/next/clear selection controls. */
+@Composable
+private fun NavArrow(glyph: String, color: Color, onClick: () -> Unit) {
+    Text(
+        glyph,
+        fontSize = 13.sp,
+        color = color,
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }

@@ -58,6 +58,18 @@ class AppState(private val scope: CoroutineScope) {
         private set
     var highlightCounting by mutableStateOf(false)
         private set
+
+    /** Positions within [filteredLines] that contain [selectionHighlight]; the next/prev targets. */
+    var highlightMatches by mutableStateOf(IntArray(0))
+        private set
+
+    /** Index into [highlightMatches] of the match the user last navigated to; -1 before any jump. */
+    var currentMatchIndex by mutableStateOf(-1)
+        private set
+
+    /** Position in [filteredLines] of the current match (the amber-highlighted line); -1 when none. */
+    val currentMatchPosition: Int
+        get() = if (currentMatchIndex in highlightMatches.indices) highlightMatches[currentMatchIndex] else -1
     private var highlightJob: Job? = null
 
     // Results
@@ -90,6 +102,8 @@ class AppState(private val scope: CoroutineScope) {
         selectionHighlight = ""
         highlightCount = null
         highlightCounting = false
+        highlightMatches = IntArray(0)
+        currentMatchIndex = -1
         statusMessage = "Indexing ${file.name}…"
         workJob = scope.launch(Dispatchers.IO) {
             try {
@@ -183,11 +197,18 @@ class AppState(private val scope: CoroutineScope) {
         }
     }
 
-    /** Called by the viewer whenever the user's text selection changes. */
+    /** Called by the viewer when the user makes a new (latched) selection. */
     fun onViewerSelection(text: String) {
         if (text == selectionHighlight) return
         selectionHighlight = text
         scheduleHighlightCount()
+    }
+
+    /** Explicitly drops the latched selection highlight (from the status bar). */
+    fun clearHighlight() {
+        if (selectionHighlight.isEmpty()) return
+        selectionHighlight = ""
+        scheduleHighlightCount(0)
     }
 
     /**
@@ -202,16 +223,37 @@ class AppState(private val scope: CoroutineScope) {
         if (idx == null || needle.isEmpty()) {
             highlightCount = null
             highlightCounting = false
+            highlightMatches = IntArray(0)
+            currentMatchIndex = -1
             return
         }
         highlightCounting = true
         highlightJob = scope.launch(Dispatchers.IO) {
             delay(debounceMs)
-            val result = runCatching { HighlightCounter.count(idx, filteredLines, needle) }
+            val result = runCatching { HighlightCounter.matches(idx, filteredLines, needle) }
             if (!isActive) return@launch
-            highlightCount = result.getOrNull()
+            val hits = result.getOrNull()
+            highlightMatches = hits ?: IntArray(0)
+            highlightCount = hits?.size
+            currentMatchIndex = -1
             highlightCounting = false
         }
+    }
+
+    /** Advances to the next occurrence (wrapping); returns its position in [filteredLines], or null. */
+    fun nextMatch(): Int? {
+        val n = highlightMatches.size
+        if (n == 0) return null
+        currentMatchIndex = if (currentMatchIndex + 1 >= n) 0 else currentMatchIndex + 1
+        return highlightMatches[currentMatchIndex]
+    }
+
+    /** Steps back to the previous occurrence (wrapping); returns its position in [filteredLines], or null. */
+    fun prevMatch(): Int? {
+        val n = highlightMatches.size
+        if (n == 0) return null
+        currentMatchIndex = if (currentMatchIndex <= 0) n - 1 else currentMatchIndex - 1
+        return highlightMatches[currentMatchIndex]
     }
 
     fun cancelWork() {
