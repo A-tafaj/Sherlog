@@ -43,7 +43,7 @@ object FilterEngine {
         val tagIdFilter: BooleanArray? = if (state.selectedTags.isEmpty()) null else {
             BooleanArray(index.tags.size) {
                 val checked = index.tags[it] in state.selectedTags
-                if (state.tagMode == TagMode.HIDE) !checked else checked
+                if (state.tagMode == FilterMode.HIDE) !checked else checked
             }
         }
         val levelFilter: BooleanArray? =
@@ -61,12 +61,17 @@ object FilterEngine {
                 if (tagId < 0) {
                     // Unparsed lines have no tag: hidden by a show-only
                     // selection, untouched by a hide selection.
-                    if (state.tagMode == TagMode.SHOW_ONLY) return false
+                    if (state.tagMode == FilterMode.SHOW_ONLY) return false
                 } else if (!tagIdFilter[tagId]) {
                     return false
                 }
             }
-            if (state.pids.isNotEmpty() && index.pids[i] !in state.pids) return false
+            if (state.pids.isNotEmpty()) {
+                // Unparsed lines hold PID -1, so they fall out of a show-only
+                // selection and survive a hide selection, matching the tags.
+                val hit = index.pids[i] in state.pids
+                if (if (state.pidMode == FilterMode.HIDE) hit else !hit) return false
+            }
             if (from != null || to != null) {
                 // Unparsed lines carry the previous parsed line's timestamp,
                 // so stack traces stay with their crash inside a time range.

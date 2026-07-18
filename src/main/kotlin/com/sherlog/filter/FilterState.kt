@@ -9,25 +9,30 @@ import com.sherlog.model.LogLevel
  * [excludeTexts], [includeTexts] and [searchQuery] need line text, which
  * triggers a streaming pass over the file.
  */
-/** How the checked tags in the tag list are applied. */
-enum class TagMode {
-    /** Keep only lines whose tag is checked (empty selection = keep all). */
+/**
+ * How a selection — checked tags, entered PIDs — is applied. Lines the
+ * selection cannot describe (unparsed ones, which carry no tag and PID -1)
+ * are dropped by [SHOW_ONLY] and left untouched by [HIDE].
+ */
+enum class FilterMode {
+    /** Keep only lines the selection matches (empty selection = keep all). */
     SHOW_ONLY,
 
-    /** Drop lines whose tag is checked; unparsed lines are unaffected. */
+    /** Drop lines the selection matches. */
     HIDE,
 }
 
 data class FilterState(
     /** Tags checked in the tag list; interpreted per [tagMode]. Empty = no tag filter. */
     val selectedTags: Set<String> = emptySet(),
-    val tagMode: TagMode = TagMode.SHOW_ONLY,
+    val tagMode: FilterMode = FilterMode.SHOW_ONLY,
     /** Case-insensitive substrings; any match drops the line ("remove all lines containing these strings"). */
     val excludeTexts: List<String> = emptyList(),
     /** Case-insensitive substrings; when non-empty a line must contain at least one (crash preset). */
     val includeTexts: List<String> = emptyList(),
-    /** PIDs to keep. Empty = all. */
+    /** PIDs entered in the PID field; interpreted per [pidMode]. Empty = no PID filter. */
     val pids: Set<Int> = emptySet(),
+    val pidMode: FilterMode = FilterMode.SHOW_ONLY,
     /** Inclusive time range, in parser timestamp millis. */
     val timeFromMs: Long? = null,
     val timeToMs: Long? = null,

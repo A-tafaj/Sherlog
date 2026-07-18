@@ -56,7 +56,7 @@ class FilterEngineTest {
     @Test
     fun `hide mode drops checked tags but keeps unparsed lines`() {
         val result = apply(
-            FilterState(selectedTags = setOf("CCodec", "AudioService"), tagMode = TagMode.HIDE),
+            FilterState(selectedTags = setOf("CCodec", "AudioService"), tagMode = FilterMode.HIDE),
         )
         // Lines 0 and 1 are hidden; the unparsed marker (line 4) survives.
         assertContentEquals(intArrayOf(2, 3, 4, 5, 6), result)
@@ -66,6 +66,13 @@ class FilterEngineTest {
     fun `pid filter`() {
         assertContentEquals(intArrayOf(2, 3, 5), apply(FilterState(pids = setOf(1913))))
         assertContentEquals(intArrayOf(0, 6), apply(FilterState(pids = setOf(715))))
+    }
+
+    @Test
+    fun `pid hide mode drops the listed pids but keeps unparsed lines`() {
+        val result = apply(FilterState(pids = setOf(1913), pidMode = FilterMode.HIDE))
+        // Lines 2, 3 and 5 belong to 1913; the unparsed marker (line 4, PID -1) survives.
+        assertContentEquals(intArrayOf(0, 1, 4, 6), result)
     }
 
     @Test

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sherlog.filter.TagMode
+import com.sherlog.filter.FilterMode
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
 
@@ -62,8 +63,8 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
         // How the checked tags apply. Flipping keeps the checked set, so
         // Show-only <-> Hide doubles as an "invert" gesture.
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            TagModeChip(state, TagMode.SHOW_ONLY, "Show only checked")
-            TagModeChip(state, TagMode.HIDE, "Hide checked")
+            TagModeChip(state, FilterMode.SHOW_ONLY, "Show only")
+            TagModeChip(state, FilterMode.HIDE, "Hide")
         }
         // Tag list — none selected means "show all tags". Both this and the
         // fields section below carry a weight: an unweighted fields Column
@@ -144,7 +145,13 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
             LevelCheckboxRow(state, LogLevel.UNKNOWN, "Other (unparsed lines)")
 
             SectionTitle("PID")
-            SmallField(state, state.pidText, { state.pidText = it }, "e.g. 1913, 6432")
+            SmallField(
+                state,
+                state.pidText,
+                { state.pidText = it },
+                if (state.pidMode == FilterMode.HIDE) "Hide: 1913, 6432" else "Show only: 1913, 6432",
+                trailing = { PidModeToggle(state) },
+            )
 
             SectionTitle("Time range")
             SmallField(state, state.timeFromText, { state.timeFromText = it }, "From: [YYYY-]MM-DD HH:MM:SS")
@@ -161,7 +168,7 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TagModeChip(state: AppState, mode: TagMode, label: String) {
+private fun TagModeChip(state: AppState, mode: FilterMode, label: String) {
     FilterChip(
         selected = state.tagMode == mode,
         onClick = {
@@ -218,15 +225,47 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun SmallField(state: AppState, value: String, onChange: (String) -> Unit, placeholder: String) {
+private fun SmallField(
+    state: AppState,
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    trailing: @Composable (() -> Unit)? = null,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = { onChange(it); state.scheduleApply() },
         placeholder = { Text(placeholder, fontSize = 11.sp) },
+        trailingIcon = trailing,
         singleLine = true,
         textStyle = MaterialTheme.typography.bodySmall,
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
     )
+}
+
+/**
+ * Flips the PID field between keeping and dropping the listed PIDs. A word
+ * rather than an icon: "show only" vs "hide" is a logic distinction, and every
+ * icon for it (an eye most of all) reads as something else. Hide mode is
+ * tinted, so a non-default mode can't be left on unnoticed.
+ */
+@Composable
+private fun PidModeToggle(state: AppState) {
+    val hiding = state.pidMode == FilterMode.HIDE
+    TextButton(
+        onClick = {
+            state.pidMode = if (hiding) FilterMode.SHOW_ONLY else FilterMode.HIDE
+            state.scheduleApply(0)
+        },
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        modifier = Modifier.padding(end = 4.dp),
+    ) {
+        Text(
+            if (hiding) "hide ▾" else "only ▾",
+            fontSize = 11.sp,
+            color = if (hiding) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        )
+    }
 }
 
 @Composable
