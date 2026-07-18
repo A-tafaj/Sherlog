@@ -3,6 +3,12 @@
 Desktop GUI tool (Kotlin + Compose Desktop) for analyzing and cleaning large
 Android logcat files — a replacement for manual `findstr`/regex log cleanup.
 
+![Sherlog filtering a 1.5-million-line logcat down to 36,802 lines](docs/images/screenshot.png)
+
+A 1,555,005-line dump narrowed to **36,802 lines** by one tag and a time range,
+with every occurrence of the selected text highlighted and counted
+(*74 lines contain "DISCONNECTED"*, bottom right) so you can step through them.
+
 Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
 [Why this tool](docs/WHY_THIS_TOOL.md).
 
@@ -20,6 +26,21 @@ Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
 - Debug presets: Network / Crash / Video.
 - Export the filtered view to a new `.txt`/`.log` file (streaming).
 - All heavy work runs on background coroutines with progress + cancel.
+
+## Roadmap
+
+Planned, roughly in priority order. Contributions welcome — open an issue
+before starting anything large.
+
+- [ ] **Multiple files open at once** — tabs or split panes, so several dumps can be compared
+      without reopening. Each tab keeps its own index and filter state.
+- [ ] **Save the current filter set as a preset** — name and store whatever is
+      configured (tags, PIDs, levels, time range, exclude/keep text) alongside
+      the built-in Network / Crash / Video presets, and edit or delete them
+      later.
+- [ ] **Persist presets to disk** — so custom presets survive a restart and can
+      be shared with a teammate as a file.
+- [ ] **Session restore** — reopen the last file with its filters intact.
 
 ## Architecture
 
