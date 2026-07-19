@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.sherlog"
-version = "0.1.0"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -35,9 +35,21 @@ compose.desktop {
         // Large indexes (10M+ lines) need heap headroom.
         jvmArgs += listOf("-Xmx3g")
         nativeDistributions {
-            targetFormats(TargetFormat.Msi)
+            // One format per OS; `packageDistributionForCurrentOS` picks the
+            // one the running machine can actually build. jpackage cannot
+            // cross-compile, so each installer comes from a CI runner of that
+            // OS (see .github/workflows/release.yml).
+            targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
             packageName = "Sherlog"
             packageVersion = "1.0.0"
+
+            linux {
+                // dpkg rejects capitals in a package name.
+                packageName = "sherlog"
+            }
+            macOS {
+                bundleID = "com.sherlog.app"
+            }
         }
     }
 }
