@@ -30,11 +30,11 @@ jobs:
           - os: macos-latest
             name: macos-arm64
             ext: dmg
-          # Apple Silicon builds won't run on Intel Macs, and plenty of
-          # Android engineers are still on them.
-          - os: macos-13
-            name: macos-x64
-            ext: dmg
+          # An Intel build (macos-13) belongs here too — an arm64 .dmg won't
+          # run on Intel Macs at all. It is left out because that runner pool
+          # is so starved the job sat unscheduled for hours and, since the
+          # release job needs every build, held the whole release hostage.
+          # Worth retrying if the queue improves.
 
     steps:
       - uses: actions/checkout@v4
@@ -95,4 +95,3 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
-          draft: true
