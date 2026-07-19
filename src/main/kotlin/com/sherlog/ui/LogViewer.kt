@@ -112,9 +112,16 @@ private fun LogRow(
     isCurrentMatch: Boolean,
     onSelectionChange: (String) -> Unit,
 ) {
-    val text by produceState("…", lineIndex, provider) {
-        value = withContext(Dispatchers.IO) {
-            runCatching { provider.line(lineIndex) }.getOrElse { "<read error: ${it.message}>" }
+    // A line whose bytes are already cached is resolved during composition, so
+    // it draws with its real text immediately. Only a genuine cache miss shows
+    // the placeholder and loads off the UI thread — otherwise a fast scroll
+    // queues one coroutine per row and the "…" outlives the data by far.
+    val cached = remember(lineIndex, provider) { runCatching { provider.cachedLine(lineIndex) }.getOrNull() }
+    val text by produceState(cached ?: "…", lineIndex, provider) {
+        if (cached == null) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { provider.line(lineIndex) }.getOrElse { "<read error: ${it.message}>" }
+            }
         }
     }
     var fieldValue by remember(lineIndex, text) { mutableStateOf(TextFieldValue(text)) }

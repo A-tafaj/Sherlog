@@ -24,22 +24,38 @@ class LineTextProvider(private val index: LogIndex) : Closeable {
     private val lock = Any()
 
     /** Returns the text of [line] (0-based), without its trailing newline. */
-    fun line(line: Int): String {
+    fun line(line: Int): String = synchronized(lock) { read(line, allowDiskRead = true)!! }
+
+    /**
+     * The text of [line] if every block it spans is already resident, else
+     * null — never touches the disk.
+     *
+     * The viewer calls this first so an already-cached line renders on the
+     * spot. Going through a coroutine for what is a memcpy costs a frame, and
+     * during a fast scroll those queued dispatches are what leave rows showing
+     * a placeholder long after the bytes were available.
+     */
+    fun cachedLine(line: Int): String? = synchronized(lock) { read(line, allowDiskRead = false) }
+
+    /**
+     * Assembles one line from the block cache. With [allowDiskRead] false, a
+     * missing block aborts with null instead of hitting the file. Callers hold
+     * [lock], so a block cannot be evicted mid-assembly.
+     */
+    private fun read(line: Int, allowDiskRead: Boolean): String? {
         val start = index.offsets[line]
         var len = index.lineByteLength(line)
         val bytes = ByteArray(len)
-        synchronized(lock) {
-            var copied = 0
-            while (copied < len) {
-                val pos = start + copied
-                val blockId = pos / BLOCK_SIZE
-                val block = blockAt(blockId)
-                val inBlock = (pos % BLOCK_SIZE).toInt()
-                val n = minOf(len - copied, block.size - inBlock)
-                if (n <= 0) { len = copied; break } // truncated file since indexing
-                System.arraycopy(block, inBlock, bytes, copied, n)
-                copied += n
-            }
+        var copied = 0
+        while (copied < len) {
+            val pos = start + copied
+            val blockId = pos / BLOCK_SIZE
+            val block = if (allowDiskRead) blockAt(blockId) else blocks[blockId] ?: return null
+            val inBlock = (pos % BLOCK_SIZE).toInt()
+            val n = minOf(len - copied, block.size - inBlock)
+            if (n <= 0) { len = copied; break } // truncated file since indexing
+            System.arraycopy(block, inBlock, bytes, copied, n)
+            copied += n
         }
         // Strip line terminators kept in the byte extent.
         while (len > 0 && (bytes[len - 1] == '\n'.code.toByte() || bytes[len - 1] == '\r'.code.toByte())) len--

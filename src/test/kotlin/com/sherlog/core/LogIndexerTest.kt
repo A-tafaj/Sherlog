@@ -6,6 +6,7 @@ import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class LogIndexerTest {
 
@@ -136,6 +137,32 @@ class LogIndexerTest {
         assertEquals(2, index.lineCount)
         LineTextProvider(index).use { provider ->
             assertEquals(long, provider.line(0))
+        }
+    }
+
+    @Test
+    fun `cachedLine serves resident lines and refuses to read from disk`() = runBlocking {
+        // Two lines far enough apart to land in different 64 KiB blocks.
+        val filler = "07-12 14:10:18.100  1913 18142 D Filler: " + "y".repeat(200)
+        val first = "07-12 14:10:18.100  1913 18142 E OkHttp: timeout"
+        val last = "07-12 14:10:19.000  1913 18143 W NetworkMonitor: DNS fail"
+        val file = logFile(first + "\n" + (filler + "\n").repeat(600) + last + "\n")
+        val index = LogIndexer.index(file)
+        LineTextProvider(index).use { provider ->
+            // Nothing read yet, so nothing is cached.
+            assertNull(provider.cachedLine(0))
+
+            // Reading line 0 pulls in its block; the line is then served
+            // synchronously, which is what keeps a fast scroll from showing
+            // the placeholder over data it already holds.
+            assertEquals(first, provider.line(0))
+            assertEquals(first, provider.cachedLine(0))
+
+            // The far line lives in a block still untouched.
+            val lastLine = index.lineCount - 1
+            assertNull(provider.cachedLine(lastLine))
+            assertEquals(last, provider.line(lastLine))
+            assertEquals(last, provider.cachedLine(lastLine))
         }
     }
 }
