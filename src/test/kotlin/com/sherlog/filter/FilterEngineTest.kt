@@ -12,6 +12,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class FilterEngineTest {
 
@@ -130,6 +132,55 @@ class FilterEngineTest {
         val state = Preset.NETWORK.applyTo(FilterState.EMPTY)
         val result = apply(state)
         assertContentEquals(intArrayOf(2, 3, 5), result)
+    }
+
+    @Test
+    fun `merging presets unions their includes`() {
+        val merged = Preset.merge(listOf(Preset.NETWORK, Preset.CRASH))
+        assertTrue("OkHttp" in merged.includeTexts)
+        assertTrue("FATAL EXCEPTION" in merged.includeTexts)
+        // No conflict between these two, so Network's excludes survive intact.
+        assertTrue("adbd" in merged.excludeTexts)
+    }
+
+    @Test
+    fun `merging presets drops excludes that another preset whitelists`() {
+        val merged = Preset.merge(listOf(Preset.NETWORK, Preset.VIDEO))
+        // Network excludes CCodec and Audio; Video includes them. Without this
+        // the exclude would veto Video entirely and it would appear to do nothing.
+        assertFalse("CCodec" in merged.excludeTexts)
+        assertFalse("Audio" in merged.excludeTexts)
+        assertTrue("CCodec" in merged.includeTexts)
+        // Noise neither preset asks for is still excluded.
+        assertTrue("adbd" in merged.excludeTexts)
+        assertTrue("Surface" in merged.excludeTexts)
+    }
+
+    @Test
+    fun `merging a single preset leaves it unchanged`() {
+        val merged = Preset.merge(listOf(Preset.NETWORK))
+        assertEquals(Preset.NETWORK.includeTexts, merged.includeTexts)
+        assertEquals(Preset.NETWORK.excludeTexts, merged.excludeTexts)
+    }
+
+    @Test
+    fun `merging nothing clears both lists`() {
+        val merged = Preset.merge(emptyList())
+        assertTrue(merged.includeTexts.isEmpty())
+        assertTrue(merged.excludeTexts.isEmpty())
+    }
+
+    @Test
+    fun `network and video together keep both subsystems`() {
+        val merged = Preset.merge(listOf(Preset.NETWORK, Preset.VIDEO))
+        val result = apply(
+            FilterState(excludeTexts = merged.excludeTexts, includeTexts = merged.includeTexts),
+        )
+        // Line 1 is CCodec (video), lines 2/3/5 are network — both subsystems
+        // survive. Line 0 (AudioService) rides along because Video includes
+        // "Audio" and includes are substring matches, the same reason the
+        // Network preset's "Audio" exclude has to catch AudioService.
+        assertContentEquals(intArrayOf(0, 1, 2, 3, 5), result)
     }
 
     @Test

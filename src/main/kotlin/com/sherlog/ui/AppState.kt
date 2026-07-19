@@ -50,6 +50,10 @@ class AppState(private val scope: CoroutineScope) {
     var tagSearchText by mutableStateOf("")
     var sortTagsByCount by mutableStateOf(true)
 
+    /** Names of the presets currently toggled on; several may be active at once. */
+    var selectedPresets by mutableStateOf(emptySet<String>())
+        private set
+
     /** Text currently selected in the viewer; all its occurrences are highlighted. */
     var selectionHighlight by mutableStateOf("")
         private set
@@ -145,10 +149,30 @@ class AppState(private val scope: CoroutineScope) {
         }
     }
 
-    fun applyPreset(preset: Preset) {
-        excludeText = preset.excludeTexts.joinToString(", ")
-        includeText = preset.includeTexts.joinToString(", ")
+    /** Turns a preset on or off; the text fields are rebuilt from whatever stays selected. */
+    fun togglePreset(preset: Preset) {
+        selectedPresets =
+            if (preset.name in selectedPresets) selectedPresets - preset.name
+            else selectedPresets + preset.name
+        val merged = Preset.merge(selectedPresets.mapNotNull(Preset::byName))
+        excludeText = merged.excludeTexts.joinToString(", ")
+        includeText = merged.includeTexts.joinToString(", ")
         scheduleApply(0)
+    }
+
+    /**
+     * Hand-edits to the text fields. Once the user rewrites what a preset
+     * wrote, the selection no longer describes the filter, so the presets are
+     * deselected rather than left claiming credit for text they don't match.
+     */
+    fun editExcludeText(value: String) {
+        excludeText = value
+        selectedPresets = emptySet()
+    }
+
+    fun editIncludeText(value: String) {
+        includeText = value
+        selectedPresets = emptySet()
     }
 
     fun clearFilters() {
@@ -161,8 +185,39 @@ class AppState(private val scope: CoroutineScope) {
         excludeText = ""; includeText = ""; searchText = ""
         searchIsRegex = false
         enabledLevels = LogLevel.entries.toSet()
+        // Everything the panel shows resets too, or the UI keeps looking
+        // filtered after a "clear": the tag list stays narrowed by its search
+        // box and the status bar keeps counting the old selection.
+        selectedPresets = emptySet()
+        tagSearchText = ""
+        clearHighlight()
         scheduleApply(0)
     }
+
+    /**
+     * How many filter categories are actually narrowing the view. Drives the
+     * "0 lines — N filters active" explanation, so an empty result says why.
+     * The time range only counts when it is tighter than the file's own span,
+     * since the fields are pre-filled with that span on load.
+     */
+    val activeFilterCount: Int
+        get() {
+            val f = appliedFilter
+            var n = 0
+            if (f.selectedTags.isNotEmpty()) n++
+            if (f.pids.isNotEmpty()) n++
+            if (f.levels.size < LogLevel.entries.size) n++
+            if (f.excludeTexts.isNotEmpty()) n++
+            if (f.includeTexts.isNotEmpty()) n++
+            if (f.searchQuery.isNotBlank()) n++
+            val idx = index
+            if (idx != null) {
+                val narrowedStart = f.timeFromMs?.let { from -> idx.firstTimestampMs?.let { from > it } } ?: false
+                val narrowedEnd = f.timeToMs?.let { to -> idx.lastTimestampMs?.let { to < it } } ?: false
+                if (narrowedStart || narrowedEnd) n++
+            }
+            return n
+        }
 
     fun export(target: File) {
         val idx = index ?: return
@@ -304,7 +359,11 @@ class AppState(private val scope: CoroutineScope) {
         }
         filteredLines = result
         progress = null
-        statusMessage = buildString {
+        val active = activeFilterCount
+        statusMessage = if (result.isEmpty() && active > 0) {
+            // An empty view is otherwise indistinguishable from a broken one.
+            "0 lines — %d filter%s active".format(active, if (active == 1) "" else "s")
+        } else buildString {
             append("%,d / %,d lines".format(result.size, idx.lineCount))
             if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
         }

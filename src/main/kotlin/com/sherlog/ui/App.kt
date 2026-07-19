@@ -1,5 +1,6 @@
 package com.sherlog.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.filter.Preset
@@ -61,8 +63,16 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                     when {
                         index == null || provider == null ->
                             EmptyViewer(state.statusMessage, Modifier.weight(1f).fillMaxWidth())
-                        state.filteredLines.isEmpty() ->
-                            EmptyViewer("No lines match the current filters.", Modifier.weight(1f).fillMaxWidth())
+                        state.filteredLines.isEmpty() -> {
+                            val active = state.activeFilterCount
+                            EmptyViewer(
+                                if (active > 0) {
+                                    "No lines match the current filters " +
+                                        "($active active). Clear Filters resets them all."
+                                } else "This file has no lines.",
+                                Modifier.weight(1f).fillMaxWidth(),
+                            )
+                        }
                         else -> LogViewer(
                             index = index,
                             provider = provider,
@@ -99,14 +109,30 @@ private fun TopBar(state: AppState, onOpenClick: () -> Unit, onExportClick: () -
         Button(onClick = onOpenClick, enabled = !state.isBusy) { Text("Open Log") }
 
         var presetMenuOpen by remember { mutableStateOf(false) }
+        val presetCount = state.selectedPresets.size
         OutlinedButton(onClick = { presetMenuOpen = true }, enabled = state.index != null) {
-            Text("Presets")
+            Text(if (presetCount > 0) "Presets ($presetCount)" else "Presets")
         }
+        // Presets combine, so the menu stays open across clicks — closing it
+        // after each one would make selecting two of them needlessly fiddly.
         DropdownMenu(expanded = presetMenuOpen, onDismissRequest = { presetMenuOpen = false }) {
             for (preset in Preset.ALL) {
+                val applied = preset.name in state.selectedPresets
                 DropdownMenuItem(
-                    text = { Text(preset.name) },
-                    onClick = { presetMenuOpen = false; state.applyPreset(preset) },
+                    text = {
+                        Text(
+                            preset.name,
+                            // Weight as well as colour, so the applied state
+                            // does not rest on colour alone.
+                            fontWeight = if (applied) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (applied) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
+                    onClick = { state.togglePreset(preset) },
+                    modifier = if (applied) {
+                        Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    } else Modifier,
                 )
             }
         }

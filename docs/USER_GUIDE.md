@@ -48,7 +48,9 @@ first and last timestamp in the file.
 **Levels** — checkboxes for E/W/I/D/V, plus Fatal and *Other* (lines that
 aren't standard logcat format, e.g. stack-trace dumps).
 
-**PID** — comma-separated process IDs, e.g. `1913, 6432`.
+**PID** — comma-separated process IDs, e.g. `1913, 6432`. The `only`/`hide`
+toggle on the right of the field switches between showing only those processes
+and dropping them; in `hide` mode it turns red so an active hide is obvious.
 
 **Time range** — the From/To fields come pre-filled with the file's full
 span. Either edit them (`MM-DD HH:MM:SS`, optional `.mmm` — note logcat uses
@@ -84,8 +86,20 @@ selection.
   Caused by / StackTrace` lines.
 - **Video Debug** — keeps only `CCodec / MediaCodec / Camera / Audio` lines.
 
-Presets fill the Exclude/Keep fields — you can tweak them afterwards.
-**Clear Filters** resets everything (time range resets to the file's full span).
+Presets fill the Exclude/Keep fields — you can tweak them afterwards, though
+editing either field by hand deselects the preset that wrote it.
+
+**Presets combine.** Pick more than one and their keep-lists merge, so
+Crash + Network shows crashes *and* network traffic. Applied presets stay
+highlighted in the menu; click one again to remove it. The menu stays open
+while you pick, so click elsewhere or press Esc to close it.
+
+Presets stack on top of your other filters rather than replacing them — a
+preset chosen while a tag is checked shows only that tag's matching lines. If
+that leaves nothing, the status bar says `0 lines — N filters active`.
+
+**Clear Filters** resets everything (time range resets to the file's full
+span), including presets, the tag search box and the selection highlight.
 
 ## Exporting
 
@@ -97,8 +111,8 @@ takes well under a second.
 
 - The status bar always reads `filtered / total lines`; watch it to see what
   a filter change did.
-- Text-based filters (search, exclude/keep) rescan the file, so on a 1 GB
-  file expect a few seconds with a progress bar; tag/PID/level/time filters
-  are instant.
+- Text-based filters (search, exclude/keep) rescan the file, so on a very
+  large file expect a few seconds with a progress bar; tag/PID/level/time
+  filters are instant.
 - Editing logs happens outside the app: select→copy into your editor, or
   Export Filtered and open the result. The log view itself is read-only.

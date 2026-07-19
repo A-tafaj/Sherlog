@@ -30,7 +30,8 @@
 
 ## Filtering (all combinable, auto-applied, cancellable)
 - **Tags** (show-only / hide, from the index — instant).
-- **PIDs** — comma-separated list.
+- **PIDs** — comma-separated list, with a `only`/`hide` toggle in the field:
+  show only those processes, or drop them and keep everything else.
 - **Levels** — E/W/I/D/V + Fatal + Other checkboxes.
 - **Time range** — From/To fields (`MM-DD HH:MM:SS[.mmm]`) pre-filled with
   the file's actual span (true min/max — multi-buffer dumps are not
@@ -55,7 +56,18 @@
 ## Presets
 - **Network Debug**, **Crash Debug**, **Video Debug** — one click fills the
   exclude/keep fields per common debugging profiles.
-- **Clear Filters** resets everything to the file's defaults.
+- **Combinable**: several presets can be applied at once. Their keep-lists are
+  unioned, so Crash + Network shows both subsystems. Applied presets are
+  highlighted in the menu, and clicking one again removes it.
+- An exclude from one preset never vetoes another preset's keep-term —
+  Network excludes `CCodec`/`Audio`, which Video keeps, so combining them
+  keeps both rather than silently dropping Video.
+- Editing the Exclude/Keep fields by hand deselects the presets, since the
+  text no longer matches what they set.
+- **Clear Filters** resets everything to the file's defaults — filters,
+  presets, the tag search box and the selection highlight.
+- When a filter combination matches nothing, the status bar reports how many
+  filters are active rather than showing a bare empty view.
 
 ## Export
 - Writes the currently filtered lines to a new `.txt`/`.log` file, streaming

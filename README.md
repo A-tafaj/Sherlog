@@ -1,7 +1,9 @@
 # Sherlog
 
-Desktop GUI tool (Kotlin + Compose Desktop) for analyzing and cleaning large
-Android logcat files — a replacement for manual `findstr`/regex log cleanup.
+A desktop **logcat viewer for large log files** — open an Android logcat dump
+far too big for a text editor, then filter it down by tag, PID, level, time and
+text instead of grinding through `findstr` and regex passes by hand.
+Kotlin + Compose Desktop.
 
 ![Sherlog filtering a 1.5-million-line logcat down to 36,802 lines](docs/images/screenshot.png)
 
@@ -14,16 +16,19 @@ Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
 
 ## Features (MVP)
 
-- Open `.txt` / `.log` logcat dumps of any size (1GB+); the file is **indexed,
-  never loaded into memory** — line text is read from disk on demand.
+- Open `.txt` / `.log` logcat dumps far larger than an editor will take —
+  1.5M-line files index in under a second. The file is **indexed, never loaded
+  into memory**; line text is read from disk on demand.
 - Parses threadtime format: timestamp, PID, TID, level, tag.
 - Dashboard: total lines, errors, warnings, unique tags, filtered count.
 - Top-tags list with counts, sortable by count or A–Z, searchable, with
   checkbox include-filtering.
 - Filters: tags, PIDs, time range (`MM-DD HH:MM:SS`), levels,
-  exclude-substrings, keep-substrings. All combinable.
+  exclude-substrings, keep-substrings. All combinable. Tags and PIDs each
+  toggle between **show-only** and **hide**.
 - Search: case-insensitive, optional regex, highlighted matches, match count.
-- Debug presets: Network / Crash / Video.
+- Debug presets: Network / Crash / Video — **combinable**, so Crash + Network
+  shows both at once.
 - Export the filtered view to a new `.txt`/`.log` file (streaming).
 - All heavy work runs on background coroutines with progress + cancel.
 

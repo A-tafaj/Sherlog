@@ -159,10 +159,10 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
             TimeRangeSlider(state)
 
             SectionTitle("Exclude lines containing")
-            SmallField(state, state.excludeText, { state.excludeText = it }, "adbd, CCodec, Audio…")
+            SmallField(state, state.excludeText, { state.editExcludeText(it) }, "adbd, CCodec, Audio…")
 
             SectionTitle("Keep only lines containing")
-            SmallField(state, state.includeText, { state.includeText = it }, "FATAL EXCEPTION, Caused by…")
+            SmallField(state, state.includeText, { state.editIncludeText(it) }, "FATAL EXCEPTION, Caused by…")
         }
     }
 }

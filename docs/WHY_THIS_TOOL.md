@@ -55,7 +55,7 @@ one-off pipeline.
 **It can't freeze on you.** Indexing, text filtering and export all run in
 the background with progress bars and a Cancel button. The UI stays
 responsive no matter the file size — the whole design (streaming index,
-on-demand line reads) exists so that "just open the 1 GB file" is a
+on-demand line reads) exists so that "just open the whole thing" is a
 reasonable thing to do.
 
 ## Concrete workflows it accelerates
