@@ -43,12 +43,19 @@ compose.desktop {
             packageName = "Sherlog"
             packageVersion = "1.0.0"
 
+            // Generated from docs/images/logo.svg; jpackage wants a different
+            // container per platform.
             linux {
                 // dpkg rejects capitals in a package name.
                 packageName = "sherlog"
+                iconFile.set(project.file("icons/icon.png"))
             }
             macOS {
                 bundleID = "com.sherlog.app"
+                iconFile.set(project.file("icons/icon.icns"))
+            }
+            windows {
+                iconFile.set(project.file("icons/icon.ico"))
             }
         }
     }

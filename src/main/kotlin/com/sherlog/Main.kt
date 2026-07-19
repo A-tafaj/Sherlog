@@ -8,6 +8,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -21,6 +22,10 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Sherlog",
+        // Taskbar/window icon while running. The installers get their icon
+        // from icons/ instead (see build.gradle.kts) — jpackage needs
+        // platform-specific containers, which this SVG is the source for.
+        icon = painterResource("logo.svg"),
         state = rememberWindowState(width = 1400.dp, height = 900.dp),
     ) {
         val scope = rememberCoroutineScope()
