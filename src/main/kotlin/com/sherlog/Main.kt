@@ -30,10 +30,12 @@ fun main() = application {
     ) {
         val scope = rememberCoroutineScope()
         val state = remember { AppState(scope) }
-        // The default scrollbar blends into the dark theme; make it clearly visible.
+        // The default scrollbar blends into the dark theme, so it is lightened
+        // — but kept restrained, since it sits beside dense log text and is
+        // the only hint that a region scrolls at all.
         val scrollbarStyle = defaultScrollbarStyle().copy(
-            unhoverColor = Color.White.copy(alpha = 0.5f),
-            hoverColor = Color.White.copy(alpha = 0.8f),
+            unhoverColor = Color.White.copy(alpha = 0.3f),
+            hoverColor = Color.White.copy(alpha = 0.6f),
         )
         MaterialTheme(colorScheme = darkColorScheme()) {
             CompositionLocalProvider(LocalScrollbarStyle provides scrollbarStyle) {

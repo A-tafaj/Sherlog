@@ -134,35 +134,44 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         val fieldScroll = rememberScrollState()
-        Column(Modifier.weight(1.3f).verticalScroll(fieldScroll)) {
-            SectionTitle("Levels")
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                for (level in listOf(LogLevel.ERROR, LogLevel.WARN, LogLevel.INFO, LogLevel.DEBUG, LogLevel.VERBOSE)) {
-                    LevelCheckbox(state, level)
+        // The weight belongs on the Box, not on the Column inside it: an
+        // unweighted sibling of the tag list is measured first and squeezes
+        // that list to zero height.
+        Box(Modifier.weight(1.3f)) {
+            Column(Modifier.fillMaxSize().verticalScroll(fieldScroll).padding(end = 10.dp)) {
+                SectionTitle("Levels")
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    for (level in listOf(LogLevel.ERROR, LogLevel.WARN, LogLevel.INFO, LogLevel.DEBUG, LogLevel.VERBOSE)) {
+                        LevelCheckbox(state, level)
+                    }
                 }
+                LevelCheckboxRow(state, LogLevel.FATAL, "Fatal")
+                LevelCheckboxRow(state, LogLevel.UNKNOWN, "Other (unparsed lines)")
+
+                SectionTitle("PID")
+                SmallField(
+                    state,
+                    state.pidText,
+                    { state.pidText = it },
+                    if (state.pidMode == FilterMode.HIDE) "Hide: 1913, 6432" else "Show only: 1913, 6432",
+                    trailing = { PidModeToggle(state) },
+                )
+
+                SectionTitle("Time range")
+                SmallField(state, state.timeFromText, { state.timeFromText = it }, "From: [YYYY-]MM-DD HH:MM:SS")
+                SmallField(state, state.timeToText, { state.timeToText = it }, "To: [YYYY-]MM-DD HH:MM:SS")
+                TimeRangeSlider(state)
+
+                SectionTitle("Exclude lines containing")
+                SmallField(state, state.excludeText, { state.editExcludeText(it) }, "adbd, CCodec, Audio…")
+
+                SectionTitle("Keep only lines containing")
+                SmallField(state, state.includeText, { state.editIncludeText(it) }, "FATAL EXCEPTION, Caused by…")
             }
-            LevelCheckboxRow(state, LogLevel.FATAL, "Fatal")
-            LevelCheckboxRow(state, LogLevel.UNKNOWN, "Other (unparsed lines)")
-
-            SectionTitle("PID")
-            SmallField(
-                state,
-                state.pidText,
-                { state.pidText = it },
-                if (state.pidMode == FilterMode.HIDE) "Hide: 1913, 6432" else "Show only: 1913, 6432",
-                trailing = { PidModeToggle(state) },
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(fieldScroll),
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
-
-            SectionTitle("Time range")
-            SmallField(state, state.timeFromText, { state.timeFromText = it }, "From: [YYYY-]MM-DD HH:MM:SS")
-            SmallField(state, state.timeToText, { state.timeToText = it }, "To: [YYYY-]MM-DD HH:MM:SS")
-            TimeRangeSlider(state)
-
-            SectionTitle("Exclude lines containing")
-            SmallField(state, state.excludeText, { state.editExcludeText(it) }, "adbd, CCodec, Audio…")
-
-            SectionTitle("Keep only lines containing")
-            SmallField(state, state.includeText, { state.editIncludeText(it) }, "FATAL EXCEPTION, Caused by…")
         }
     }
 }
