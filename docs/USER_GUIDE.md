@@ -113,6 +113,17 @@ span), including presets, the tag search box and the selection highlight.
 a new `.txt`/`.log` file (default `cleaned_logcat.txt`). A 266K-line export
 takes well under a second.
 
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Ctrl`+`F` | Jump to the search box |
+| `F3` / `Shift`+`F3` | Next / previous match |
+| `Esc` | Clear the search, then the highlight |
+| `Ctrl`+`O` | Open Log |
+| `Ctrl`+`E` | Export Filtered |
+| `Ctrl`+`C` | Copy the selection (within a line) |
+
 ## Tips
 
 - The status bar always reads `filtered / total lines`; watch it to see what

@@ -305,6 +305,24 @@ class AppState(private val scope: CoroutineScope) {
         scheduleHighlightCount()
     }
 
+    /**
+     * The Escape key: peel back one layer of search state. Clears the query
+     * first, then any lingering highlight; returns false when there was
+     * nothing to clear so the key can fall through.
+     */
+    fun onEscape(): Boolean {
+        if (searchText.isNotBlank()) {
+            searchText = ""
+            if (searchMode == SearchMode.FILTER) scheduleApply(0) else scheduleHighlightCount(0)
+            return true
+        }
+        if (selectionHighlight.isNotEmpty()) {
+            clearHighlight()
+            return true
+        }
+        return false
+    }
+
     /** Explicitly drops the current highlight (the ✕ in the status bar). */
     fun clearHighlight() {
         // Clear whichever source is driving the highlight.

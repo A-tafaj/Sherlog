@@ -35,12 +35,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,7 +64,38 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
     // Hoisted here so the status-bar next/prev buttons can scroll the viewer.
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    val searchFocus = remember { FocusRequester() }
+    // Holds keyboard focus so shortcuts work before the user clicks anything;
+    // clicking a field moves focus away, but onPreviewKeyEvent still tunnels
+    // through this root first.
+    val rootFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { rootFocus.requestFocus() }
+
+    fun scrollTo(pos: Int?) {
+        if (pos != null) scope.launch { listState.animateScrollToItem(pos) }
+    }
+
+    fun onShortcut(e: KeyEvent): Boolean {
+        if (e.type != KeyEventType.KeyDown) return false
+        val exportEnabled = state.index != null && state.filteredLines.isNotEmpty() && !state.isBusy
+        return when {
+            e.isCtrlPressed && e.key == Key.F -> { searchFocus.requestFocus(); true }
+            e.isCtrlPressed && e.key == Key.O -> { if (!state.isBusy) onOpenClick(); true }
+            e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
+            e.key == Key.F3 && e.isShiftPressed -> { scrollTo(state.prevMatch()); true }
+            e.key == Key.F3 -> { scrollTo(state.nextMatch()); true }
+            e.key == Key.Escape -> state.onEscape()
+            else -> false
+        }
+    }
+
+    Surface(
+        Modifier.fillMaxSize()
+            .focusRequester(rootFocus)
+            .onPreviewKeyEvent(::onShortcut)
+            .focusTarget(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Column {
             TopBar(state, onOpenClick, onExportClick)
             HorizontalDivider()
@@ -62,7 +105,7 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                 FilterPanel(state, Modifier.width(300.dp).fillMaxSize())
                 VerticalDivider()
                 Column(Modifier.weight(1f)) {
-                    SearchBar(state)
+                    SearchBar(state, searchFocus)
                     HorizontalDivider()
                     val index = state.index
                     val provider = state.provider
@@ -185,7 +228,7 @@ private fun Stat(label: String, value: Int?) {
 }
 
 @Composable
-private fun SearchBar(state: AppState) {
+private fun SearchBar(state: AppState, searchFocus: FocusRequester) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -204,7 +247,7 @@ private fun SearchBar(state: AppState) {
             singleLine = true,
             textStyle = MaterialTheme.typography.bodySmall,
             trailingIcon = { SearchModeToggle(state) },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).focusRequester(searchFocus),
         )
         Checkbox(
             checked = state.searchIsRegex,
