@@ -1,5 +1,6 @@
 package com.sherlog.ui
 
+import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterAlt
+import androidx.compose.material.icons.filled.FilterAltOff
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -79,7 +85,8 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                             filteredLines = state.filteredLines,
                             searchQuery = state.appliedFilter.searchQuery,
                             searchIsRegex = state.appliedFilter.searchIsRegex,
-                            selectionHighlight = state.selectionHighlight,
+                            highlightNeedle = state.highlightNeedle,
+                            highlightIsRegex = state.highlightIsRegex,
                             currentMatchPosition = state.currentMatchPosition,
                             onSelectionChange = { state.onViewerSelection(it) },
                             listState = listState,
@@ -184,19 +191,63 @@ private fun SearchBar(state: AppState) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
+        val finding = state.searchMode == SearchMode.FIND
         OutlinedTextField(
             value = state.searchText,
-            onValueChange = { state.searchText = it; state.scheduleApply(500) },
-            placeholder = { Text("Search (case insensitive)…") },
+            onValueChange = { state.searchText = it; state.onSearchChanged() },
+            placeholder = {
+                Text(
+                    if (finding) "Find in view (highlights, case insensitive)…"
+                    else "Filter to matching lines (case insensitive)…",
+                )
+            },
             singleLine = true,
             textStyle = MaterialTheme.typography.bodySmall,
+            trailingIcon = { SearchModeToggle(state) },
             modifier = Modifier.weight(1f),
         )
         Checkbox(
             checked = state.searchIsRegex,
-            onCheckedChange = { state.searchIsRegex = it; state.scheduleApply(0) },
+            onCheckedChange = {
+                state.searchIsRegex = it
+                if (finding) state.onSearchChanged() else state.scheduleApply(0)
+            },
         )
         Text("Regex", fontSize = 12.sp)
+    }
+}
+
+/**
+ * Flips the search box between narrowing the view (Filter) and highlighting
+ * matches in place (Find), like the mode switch text editors have. A filter
+ * icon with a slash through it in Find mode — tinted, so a non-default mode is
+ * obvious — and a tooltip naming what a click will switch to.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun SearchModeToggle(state: AppState) {
+    val finding = state.searchMode == SearchMode.FIND
+    TooltipArea(
+        tooltip = {
+            Surface(color = MaterialTheme.colorScheme.inverseSurface, shape = RoundedCornerShape(4.dp)) {
+                Text(
+                    if (finding) "Find: highlights matches in place. Click to filter instead."
+                    else "Filter: keeps only matching lines. Click to find in place.",
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        },
+    ) {
+        IconButton(onClick = { state.toggleSearchMode() }) {
+            Icon(
+                imageVector = if (finding) Icons.Filled.FilterAltOff else Icons.Filled.FilterAlt,
+                contentDescription = if (finding) "Find mode" else "Filter mode",
+                tint = if (finding) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -220,7 +271,7 @@ private fun StatusBar(
         } else {
             Text(state.statusMessage, fontSize = 11.sp)
             Spacer(Modifier.weight(1f))
-            val needle = state.selectionHighlight.let { if (it.length > 24) it.take(24) + "…" else it }
+            val needle = state.highlightNeedle.let { if (it.length > 24) it.take(24) + "…" else it }
             val highlightText = when {
                 state.highlightCounting -> "counting \"$needle\"…"
                 state.highlightCount != null -> "%,d lines contain \"%s\"".format(state.highlightCount, needle)

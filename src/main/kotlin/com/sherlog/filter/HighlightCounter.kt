@@ -15,8 +15,19 @@ import java.io.BufferedInputStream
  */
 object HighlightCounter {
 
-    suspend fun matches(index: LogIndex, lines: IntArray, needle: String): IntArray {
+    suspend fun matches(
+        index: LogIndex,
+        lines: IntArray,
+        needle: String,
+        isRegex: Boolean = false,
+    ): IntArray {
         if (needle.isEmpty() || lines.isEmpty()) return IntArray(0)
+        // Shares the filter path's matcher so find-mode search honours the
+        // Regex checkbox. An empty needle means "highlight nothing" here,
+        // unlike the filter path where it means "no constraint" — hence the
+        // guard above rather than relying on SearchMatcher.
+        val matcher = FilterEngine.SearchMatcher(needle, isRegex)
+        if (matcher.isInvalid) return IntArray(0)
         val ctx = currentCoroutineContext()
         val hits = IntList(64)
         BufferedInputStream(index.file.inputStream(), 1 shl 20).use { input ->
@@ -42,7 +53,7 @@ object HighlightCounter {
                 var textLen = read
                 while (textLen > 0 && (buffer[textLen - 1] == '\n'.code.toByte() || buffer[textLen - 1] == '\r'.code.toByte())) textLen--
                 val line = String(buffer, 0, textLen, Charsets.UTF_8)
-                if (line.contains(needle, ignoreCase = true)) hits.add(k)
+                if (matcher.matches(line)) hits.add(k)
             }
         }
         return hits.toArray()

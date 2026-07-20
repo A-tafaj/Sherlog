@@ -23,6 +23,15 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 
+/** What the search bar does with what you type. */
+enum class SearchMode {
+    /** Drops lines that don't match — the view shrinks to the hits. */
+    FILTER,
+
+    /** Leaves every line in place and highlights the hits, as an editor does. */
+    FIND,
+}
+
 /**
  * All UI state and the background jobs that mutate it. Snapshot state is
  * safe to write from worker threads; Compose picks the changes up.
@@ -46,6 +55,7 @@ class AppState(private val scope: CoroutineScope) {
     var includeText by mutableStateOf("")
     var searchText by mutableStateOf("")
     var searchIsRegex by mutableStateOf(false)
+    var searchMode by mutableStateOf(SearchMode.FILTER)
     var enabledLevels by mutableStateOf(LogLevel.entries.toSet())
     var tagSearchText by mutableStateOf("")
     var sortTagsByCount by mutableStateOf(true)
@@ -57,6 +67,19 @@ class AppState(private val scope: CoroutineScope) {
     /** Text currently selected in the viewer; all its occurrences are highlighted. */
     var selectionHighlight by mutableStateOf("")
         private set
+
+    /**
+     * The needle that drives occurrence highlighting and next/prev navigation.
+     * The search box wins whenever it is in Find mode with text; an in-line
+     * double-click selection fills in only when the search box isn't claiming
+     * the highlight.
+     */
+    val highlightNeedle: String
+        get() = if (searchMode == SearchMode.FIND && searchText.isNotBlank()) searchText else selectionHighlight
+
+    /** Whether [highlightNeedle] should be matched as a regex (only Find-mode search can be). */
+    val highlightIsRegex: Boolean
+        get() = searchMode == SearchMode.FIND && searchText.isNotBlank() && searchIsRegex
 
     /** Lines (within the current filter) containing [selectionHighlight]; null when inactive. */
     var highlightCount by mutableStateOf<Int?>(null)
@@ -149,6 +172,23 @@ class AppState(private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * The search box changed. In Filter mode the text narrows the view, so we
+     * re-filter; in Find mode it only moves the highlight, so we skip the
+     * filter pass entirely and just recount occurrences.
+     */
+    fun onSearchChanged() {
+        if (searchMode == SearchMode.FILTER) scheduleApply(500) else scheduleHighlightCount(300)
+    }
+
+    /** Flips the search box between narrowing the view and highlighting in place. */
+    fun toggleSearchMode() {
+        searchMode = if (searchMode == SearchMode.FILTER) SearchMode.FIND else SearchMode.FILTER
+        // Leaving Filter mode drops the search constraint; entering it adds one.
+        // Re-filtering recomputes the highlight at its tail, covering both.
+        scheduleApply(0)
+    }
+
     /** Turns a preset on or off; the text fields are rebuilt from whatever stays selected. */
     fun togglePreset(preset: Preset) {
         selectedPresets =
@@ -184,6 +224,7 @@ class AppState(private val scope: CoroutineScope) {
         timeToText = index?.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
         excludeText = ""; includeText = ""; searchText = ""
         searchIsRegex = false
+        searchMode = SearchMode.FILTER
         enabledLevels = LogLevel.entries.toSet()
         // Everything the panel shows resets too, or the UI keeps looking
         // filtered after a "clear": the tag list stays narrowed by its search
@@ -258,25 +299,35 @@ class AppState(private val scope: CoroutineScope) {
     fun onViewerSelection(text: String) {
         if (text == selectionHighlight) return
         selectionHighlight = text
+        // In Find mode with a query, the search box owns the highlight, so a
+        // stray in-line selection is remembered but must not kick off a recount.
+        if (searchMode == SearchMode.FIND && searchText.isNotBlank()) return
         scheduleHighlightCount()
     }
 
-    /** Explicitly drops the latched selection highlight (from the status bar). */
+    /** Explicitly drops the current highlight (the ✕ in the status bar). */
     fun clearHighlight() {
+        // Clear whichever source is driving the highlight.
+        if (searchMode == SearchMode.FIND && searchText.isNotBlank()) {
+            searchText = ""
+            scheduleHighlightCount(0)
+            return
+        }
         if (selectionHighlight.isEmpty()) return
         selectionHighlight = ""
         scheduleHighlightCount(0)
     }
 
     /**
-     * Recounts how many filtered lines contain the selected text. Debounced:
-     * dragging a selection fires this on every change, and the count needs a
-     * streaming pass over the file.
+     * Recounts how many filtered lines contain [highlightNeedle]. Debounced:
+     * dragging a selection or typing a Find query fires this on every change,
+     * and the count needs a streaming pass over the file.
      */
     private fun scheduleHighlightCount(debounceMs: Long = 400) {
         highlightJob?.cancel()
         val idx = index
-        val needle = selectionHighlight
+        val needle = highlightNeedle
+        val isRegex = highlightIsRegex
         if (idx == null || needle.isEmpty()) {
             highlightCount = null
             highlightCounting = false
@@ -287,7 +338,7 @@ class AppState(private val scope: CoroutineScope) {
         highlightCounting = true
         highlightJob = scope.launch(Dispatchers.IO) {
             delay(debounceMs)
-            val result = runCatching { HighlightCounter.matches(idx, filteredLines, needle) }
+            val result = runCatching { HighlightCounter.matches(idx, filteredLines, needle, isRegex) }
             if (!isActive) return@launch
             val hits = result.getOrNull()
             highlightMatches = hits ?: IntArray(0)
@@ -343,7 +394,9 @@ class AppState(private val scope: CoroutineScope) {
             timeFromMs = from,
             timeToMs = to,
             levels = enabledLevels,
-            searchQuery = searchText,
+            // Find mode highlights in place instead of narrowing, so it puts
+            // nothing into the filter — the query drives the highlight path.
+            searchQuery = if (searchMode == SearchMode.FILTER) searchText else "",
             searchIsRegex = searchIsRegex,
         )
     }
@@ -368,6 +421,6 @@ class AppState(private val scope: CoroutineScope) {
             if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
         }
         // The highlight count is relative to the filtered set; recount.
-        if (selectionHighlight.isNotEmpty()) scheduleHighlightCount(0)
+        if (highlightNeedle.isNotEmpty()) scheduleHighlightCount(0)
     }
 }

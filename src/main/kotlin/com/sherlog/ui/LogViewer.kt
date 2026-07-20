@@ -67,21 +67,29 @@ fun LogViewer(
     filteredLines: IntArray,
     searchQuery: String,
     searchIsRegex: Boolean,
-    selectionHighlight: String,
+    highlightNeedle: String,
+    highlightIsRegex: Boolean,
     currentMatchPosition: Int,
     onSelectionChange: (String) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
-    val matcher = remember(searchQuery, searchIsRegex) {
+    // Filter-mode search paints yellow; the occurrence/Find highlight paints
+    // cyan (amber on the line the arrows sit on). Both go through the same
+    // matcher, so Find honours the Regex checkbox while a double-click stays
+    // a plain substring.
+    val searchMatcher = remember(searchQuery, searchIsRegex) {
         if (searchQuery.isBlank()) null else FilterEngine.SearchMatcher(searchQuery, searchIsRegex)
+    }
+    val highlightMatcher = remember(highlightNeedle, highlightIsRegex) {
+        if (highlightNeedle.isBlank()) null else FilterEngine.SearchMatcher(highlightNeedle, highlightIsRegex)
     }
 
     Box(modifier) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(end = 12.dp)) {
             items(count = filteredLines.size, key = { filteredLines[it] }) { pos ->
                 val lineIndex = filteredLines[pos]
-                LogRow(index, provider, lineIndex, matcher, selectionHighlight, pos == currentMatchPosition, onSelectionChange)
+                LogRow(index, provider, lineIndex, searchMatcher, highlightMatcher, pos == currentMatchPosition, onSelectionChange)
             }
         }
         VerticalScrollbar(
@@ -107,8 +115,8 @@ private fun LogRow(
     index: LogIndex,
     provider: LineTextProvider,
     lineIndex: Int,
-    matcher: FilterEngine.SearchMatcher?,
-    selectionHighlight: String,
+    searchMatcher: FilterEngine.SearchMatcher?,
+    highlightMatcher: FilterEngine.SearchMatcher?,
     isCurrentMatch: Boolean,
     onSelectionChange: (String) -> Unit,
 ) {
@@ -132,8 +140,8 @@ private fun LogRow(
         LogLevel.WARN -> Color(0x14FFA000)
         else -> Color.Transparent
     }
-    val transformation = remember(matcher, selectionHighlight, isCurrentMatch) {
-        LogHighlightTransformation(matcher, selectionHighlight, isCurrentMatch)
+    val transformation = remember(searchMatcher, highlightMatcher, isCurrentMatch) {
+        LogHighlightTransformation(searchMatcher, highlightMatcher, isCurrentMatch)
     }
 
     BasicTextField(
@@ -180,8 +188,8 @@ private fun LogRow(
  * neighbouring matches.
  */
 private class LogHighlightTransformation(
-    private val matcher: FilterEngine.SearchMatcher?,
-    private val selection: String,
+    private val searchMatcher: FilterEngine.SearchMatcher?,
+    private val highlightMatcher: FilterEngine.SearchMatcher?,
     private val activeSelection: Boolean,
 ) : VisualTransformation {
 
@@ -190,16 +198,16 @@ private class LogHighlightTransformation(
         val selStyle = if (activeSelection) activeSelectionHighlightStyle else selectionHighlightStyle
         val styled = buildAnnotatedString {
             append(raw)
-            matcher?.regex?.let { regex ->
+            searchMatcher?.regex?.let { regex ->
                 for (m in regex.findAll(raw)) {
                     if (!m.range.isEmpty()) addStyle(searchHighlightStyle, m.range.first, m.range.last + 1)
                 }
             }
-            if (selection.length >= MIN_HIGHLIGHT_LENGTH) {
-                var i = raw.indexOf(selection, 0, ignoreCase = true)
-                while (i >= 0) {
-                    addStyle(selStyle, i, i + selection.length)
-                    i = raw.indexOf(selection, i + selection.length, ignoreCase = true)
+            // The occurrence / Find highlight. Goes through a matcher too, so a
+            // regex Find paints every match and a double-click stays substring.
+            highlightMatcher?.regex?.let { regex ->
+                for (m in regex.findAll(raw)) {
+                    if (!m.range.isEmpty()) addStyle(selStyle, m.range.first, m.range.last + 1)
                 }
             }
         }
@@ -207,11 +215,12 @@ private class LogHighlightTransformation(
     }
 
     override fun equals(other: Any?): Boolean =
-        other is LogHighlightTransformation && other.matcher == matcher &&
-            other.selection == selection && other.activeSelection == activeSelection
+        other is LogHighlightTransformation && other.searchMatcher == searchMatcher &&
+            other.highlightMatcher == highlightMatcher && other.activeSelection == activeSelection
 
     override fun hashCode(): Int =
-        31 * (31 * (matcher?.hashCode() ?: 0) + selection.hashCode()) + activeSelection.hashCode()
+        31 * (31 * (searchMatcher?.hashCode() ?: 0) + (highlightMatcher?.hashCode() ?: 0)) +
+            activeSelection.hashCode()
 }
 
 @Composable

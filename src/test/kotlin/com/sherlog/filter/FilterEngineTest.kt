@@ -195,6 +195,17 @@ class FilterEngineTest {
     }
 
     @Test
+    fun `highlight counter matches a regex needle when asked`() = runBlocking {
+        val all = apply(FilterState.EMPTY)
+        // Find mode with the Regex box ticked: "TIMEOUT" or "timeout".
+        assertEquals(2, HighlightCounter.matches(index, all, "TIME(D )?OUT|timeout", isRegex = true).size)
+        // The same pattern as a literal matches nothing.
+        assertEquals(0, HighlightCounter.matches(index, all, "TIME(D )?OUT|timeout", isRegex = false).size)
+        // An invalid regex highlights nothing rather than throwing.
+        assertEquals(0, HighlightCounter.matches(index, all, "[unclosed", isRegex = true).size)
+    }
+
+    @Test
     fun `highlight counter returns positions within the filtered list`() = runBlocking {
         val all = apply(FilterState.EMPTY)
         val hits = HighlightCounter.matches(index, all, "timeout")
