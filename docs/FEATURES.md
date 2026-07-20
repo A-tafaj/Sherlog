@@ -43,8 +43,10 @@
 
 ## Search
 - Case-insensitive; optional regex (invalid regex safely matches nothing).
-- Yellow match highlighting in the view; match count in the status bar.
-- Acts as an additional filter on top of everything else.
+- Two modes, toggled by the icon in the box:
+  - **Filter** — narrows the view to matching lines.
+  - **Find** — highlights matches in place; ▲ ▼ arrows step through them.
+- Match count in the status bar; regex works in both modes.
 
 ## Selection highlighting
 - Select text in any log line (drag or double-click a word): all occurrences

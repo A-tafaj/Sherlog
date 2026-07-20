@@ -23,7 +23,6 @@ Grab the installer for your platform from the
 |----------|------|
 | Windows | `Sherlog-windows-x64.msi` |
 | macOS (Apple Silicon) | `Sherlog-macos-arm64.dmg` |
-| macOS (Intel) | `Sherlog-macos-x64.dmg` |
 | Linux (Debian/Ubuntu) | `Sherlog-linux-x64.deb` |
 
 **No Java required** — every installer bundles its own runtime.

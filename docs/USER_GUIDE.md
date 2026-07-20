@@ -66,9 +66,15 @@ a line must contain at least one to stay.
 
 ## Search
 
-The search box above the log view is case-insensitive; tick **Regex** for
-regular expressions. Matches are highlighted yellow and the status bar shows
-the match count. Search combines with all other filters.
+Case-insensitive; tick **Regex** for patterns. The icon on the right toggles
+two modes:
+
+- **Filter** (default) — narrows the view to matching lines.
+- **Find** — keeps every line and highlights matches in place; the ▲ ▼ arrows
+  step through them, like Ctrl+F in an editor.
+
+Typing takes over the highlight from a double-click selection; clear the box
+to get it back.
 
 ## Highlight occurrences of a selection
 
