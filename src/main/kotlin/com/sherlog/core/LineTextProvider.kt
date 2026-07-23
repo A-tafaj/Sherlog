@@ -10,18 +10,32 @@ import java.io.RandomAccessFile
  *
  * Thread-safe: the viewer fetches from IO coroutines.
  */
-class LineTextProvider(private val index: LogIndex) : Closeable {
+class LineTextProvider(index: LogIndex) : Closeable {
 
     private companion object {
         const val BLOCK_SIZE = 1 shl 16 // 64 KiB
         const val MAX_BLOCKS = 128      // 8 MiB cache
     }
 
+    // The index is a var so a live capture can advance the provider to a larger
+    // snapshot over the same file without dropping the block cache.
+    private var index: LogIndex = index
     private val raf = RandomAccessFile(index.file, "r")
     private val blocks = object : LinkedHashMap<Long, ByteArray>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: Map.Entry<Long, ByteArray>) = size > MAX_BLOCKS
     }
     private val lock = Any()
+
+    /**
+     * Points the provider at a newer snapshot of the same growing file. Drops
+     * any partially-filled tail block (size < [BLOCK_SIZE]) so bytes appended
+     * since it was cached are re-read; full blocks are complete and kept.
+     */
+    fun advance(newIndex: LogIndex) = synchronized(lock) {
+        require(newIndex.file == index.file) { "advance must stay on the same file" }
+        index = newIndex
+        blocks.values.removeIf { it.size < BLOCK_SIZE }
+    }
 
     /** Returns the text of [line] (0-based), without its trailing newline. */
     fun line(line: Int): String = synchronized(lock) { read(line, allowDiskRead = true)!! }

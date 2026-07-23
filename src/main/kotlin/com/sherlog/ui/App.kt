@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,6 +71,13 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
     // through this root first.
     val rootFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { rootFocus.requestFocus() }
+
+    // Follow the tail while capturing: each snapshot bumps liveRevision.
+    LaunchedEffect(state.liveRevision) {
+        if (state.isLive && state.filteredLines.isNotEmpty()) {
+            listState.scrollToItem(state.filteredLines.size - 1)
+        }
+    }
 
     fun scrollTo(pos: Int?) {
         if (pos != null) scope.launch { listState.animateScrollToItem(pos) }
@@ -188,6 +196,8 @@ private fun TopBar(state: AppState, onOpenClick: () -> Unit, onExportClick: () -
         }
         TextButton(onClick = { state.clearFilters() }, enabled = state.index != null) { Text("Clear Filters") }
 
+        LiveControl(state)
+
         Spacer(Modifier.weight(1f))
         Text(
             state.index?.file?.name ?: "No file loaded",
@@ -198,6 +208,62 @@ private fun TopBar(state: AppState, onOpenClick: () -> Unit, onExportClick: () -
             onClick = onExportClick,
             enabled = state.index != null && state.filteredLines.isNotEmpty() && !state.isBusy,
         ) { Text("Export Filtered") }
+    }
+}
+
+/**
+ * Live-capture control. When idle: a Live ▾ menu that scans for devices on
+ * open and starts a capture on pick, with an adb-path field shown when adb
+ * can't be found. While capturing: a red Stop button.
+ */
+@Composable
+private fun LiveControl(state: AppState) {
+    if (state.isLive) {
+        Button(
+            onClick = { state.stopLive() },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+        ) { Text("■ Stop") }
+        return
+    }
+    var menuOpen by remember { mutableStateOf(false) }
+    OutlinedButton(
+        onClick = { menuOpen = true; state.refreshDevices() },
+        enabled = !state.isBusy,
+    ) { Text("Live ▾") }
+    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+        val devices = state.devices
+        if (devices.isEmpty()) {
+            DropdownMenuItem(
+                enabled = false,
+                text = { Text(state.adbError ?: "Scanning for devices…", fontSize = 12.sp) },
+                onClick = {},
+            )
+        } else {
+            for (device in devices) {
+                DropdownMenuItem(
+                    text = { Text(device.label, fontSize = 12.sp) },
+                    onClick = { menuOpen = false; state.startLive(device) },
+                )
+            }
+        }
+        // Shown only when adb couldn't be located, so the user can point at it.
+        if (state.adbError != null) {
+            HorizontalDivider()
+            Column(Modifier.padding(8.dp).width(320.dp)) {
+                Text("Path to adb", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = state.adbPathText,
+                    onValueChange = { state.adbPathText = it },
+                    placeholder = { Text("C:\\…\\platform-tools\\adb.exe", fontSize = 11.sp) },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = { state.setAdbPath(state.adbPathText) }) {
+                    Text("Use this adb", fontSize = 11.sp)
+                }
+            }
+        }
     }
 }
 

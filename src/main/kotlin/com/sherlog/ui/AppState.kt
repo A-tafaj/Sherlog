@@ -3,7 +3,12 @@ package com.sherlog.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.sherlog.adb.AdbDevice
+import com.sherlog.adb.AdbEnvironment
+import com.sherlog.adb.AdbLocator
+import com.sherlog.adb.LogcatSession
 import com.sherlog.core.LineTextProvider
+import com.sherlog.core.LiveLogIndexer
 import com.sherlog.core.LogIndex
 import com.sherlog.core.LogIndexer
 import com.sherlog.export.LogExporter
@@ -43,6 +48,24 @@ class AppState(private val scope: CoroutineScope) {
         private set
     var provider by mutableStateOf<LineTextProvider?>(null)
         private set
+
+    // Live capture (adb logcat)
+    var isLive by mutableStateOf(false)
+        private set
+    var devices by mutableStateOf<List<AdbDevice>>(emptyList())
+        private set
+    var adbError by mutableStateOf<String?>(null)
+        private set
+    var adbPathText by mutableStateOf(AdbLocator.overridePath ?: "")
+    /** Bumped on each live snapshot so the viewer can follow the tail. */
+    var liveRevision by mutableStateOf(0)
+        private set
+
+    private var adb: AdbEnvironment? = null
+    private var liveIndexer: LiveLogIndexer? = null
+    private var liveSession: LogcatSession? = null
+    private var liveJob: Job? = null
+    private var liveTickJob: Job? = null
 
     // Filter inputs (raw UI text; compiled into FilterState on apply)
     var selectedTags by mutableStateOf(emptySet<String>())
@@ -120,6 +143,7 @@ class AppState(private val scope: CoroutineScope) {
     val isBusy: Boolean get() = progress != null
 
     fun openFile(file: File) {
+        if (isLive) stopLive()
         cancelWork()
         applyJob?.cancel()
         provider?.close()
@@ -153,6 +177,120 @@ class AppState(private val scope: CoroutineScope) {
                 progress = null
             }
         }
+    }
+
+    /** Looks up connected devices (and whether adb is even reachable) off the UI thread. */
+    fun refreshDevices() {
+        scope.launch(Dispatchers.IO) {
+            val env = AdbLocator.locate()
+            adb = env
+            if (env == null) {
+                adbError = "adb not found. Set the path to the adb executable below."
+                devices = emptyList()
+                return@launch
+            }
+            val found = runCatching { env.devices() }.getOrElse {
+                adbError = "Could not list devices: ${it.message}"
+                devices = emptyList()
+                return@launch
+            }
+            devices = found
+            adbError = if (found.isEmpty()) "No devices connected." else null
+        }
+    }
+
+    /** Remembers a manual adb path (for when it isn't on PATH) and re-scans. */
+    fun setAdbPath(path: String) {
+        adbPathText = path
+        AdbLocator.overridePath = path
+        refreshDevices()
+    }
+
+    /**
+     * Starts streaming `adb logcat` for [device] into a temp file, indexing it
+     * incrementally. Mirrors [openFile]: the capture file behaves like any
+     * opened log, so filtering/search/export need no special-casing — and on
+     * [stopLive] it simply stays open.
+     */
+    fun startLive(device: AdbDevice?) {
+        val env = adb ?: run { adbError = "adb not available."; return }
+        if (isLive) stopLive()
+        cancelWork()
+        applyJob?.cancel()
+        provider?.close()
+        filteredLines = IntArray(0)
+        selectedTags = emptySet()
+        selectionHighlight = ""
+        highlightCount = null
+        highlightCounting = false
+        highlightMatches = IntArray(0)
+        currentMatchIndex = -1
+        // The captured span is unknown and keeps growing, so leave the time
+        // fields blank until the capture stops.
+        timeFromText = ""
+        timeToText = ""
+
+        val tmp = File.createTempFile("sherlog-live", ".txt").apply { deleteOnExit() }
+        val indexer = LiveLogIndexer(tmp)
+        liveIndexer = indexer
+        val prov = LineTextProvider(indexer.snapshot())
+        provider = prov
+        index = indexer.snapshot()
+        appliedFilter = FilterState.EMPTY
+
+        val session = try {
+            env.logcat(device?.serial)
+        } catch (e: Exception) {
+            adbError = "Failed to start logcat: ${e.message}"
+            return
+        }
+        liveSession = session
+        isLive = true
+        adbError = null
+        statusMessage = "● LIVE — ${device?.label ?: "device"}"
+
+        liveJob = scope.launch(Dispatchers.IO) {
+            runCatching { session.pump(tmp, indexer) {} }
+            // The stream ended on its own (device unplugged, adb died).
+            if (isLive) {
+                isLive = false
+                statusMessage = "Live capture ended."
+            }
+        }
+        liveTickJob = scope.launch(Dispatchers.IO) {
+            var lastBytes = -1L
+            while (isActive && isLive) {
+                delay(250)
+                val b = indexer.byteCount
+                if (b == lastBytes) continue
+                lastBytes = b
+                val snap = indexer.snapshot()
+                prov.advance(snap)
+                index = snap
+                runFilter(snap)
+                liveRevision++
+            }
+        }
+    }
+
+    /** Ends the capture. The temp file + index stay open exactly like a loaded file. */
+    fun stopLive() {
+        liveSession?.stop()
+        liveTickJob?.cancel()
+        liveJob?.cancel()
+        liveSession = null
+        liveTickJob = null
+        liveJob = null
+        if (!isLive && liveIndexer == null) return
+        isLive = false
+        val indexer = liveIndexer ?: return
+        val snap = indexer.snapshot()
+        provider?.advance(snap)
+        index = snap
+        // Now the span is fixed, so prefill the time range as opening a file does.
+        timeFromText = snap.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+        timeToText = snap.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+        scope.launch(Dispatchers.IO) { runFilter(snap) }
     }
 
     /** Re-applies filters after a short debounce; called on every filter-input change. */
@@ -431,10 +569,12 @@ class AppState(private val scope: CoroutineScope) {
         filteredLines = result
         progress = null
         val active = activeFilterCount
+        val livePrefix = if (isLive) "● LIVE · " else ""
         statusMessage = if (result.isEmpty() && active > 0) {
             // An empty view is otherwise indistinguishable from a broken one.
-            "0 lines — %d filter%s active".format(active, if (active == 1) "" else "s")
+            "${livePrefix}0 lines — %d filter%s active".format(active, if (active == 1) "" else "s")
         } else buildString {
+            append(livePrefix)
             append("%,d / %,d lines".format(result.size, idx.lineCount))
             if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
         }
