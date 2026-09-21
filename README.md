@@ -5,11 +5,13 @@ far too big for a text editor, then filter it down by tag, PID, level, time and
 text instead of grinding through `findstr` and regex passes by hand.
 Kotlin + Compose Desktop.
 
-![Sherlog filtering a 1.5-million-line logcat down to 36,802 lines](docs/images/screenshot.png)
+![Sherlog with three logs in tabs, filtering a 1.5-million-line logcat down to 18,565 lines](docs/images/screenshot.png)
 
-A 1,555,005-line dump narrowed to **36,802 lines** by one tag and a time range,
-with every occurrence of the selected text highlighted and counted
-(*74 lines contain "DISCONNECTED"*, bottom right) so you can step through them.
+A 1,555,005-line dump narrowed to **18,565 lines** by five tags and a time
+range. Find mode highlights every `NetWorkUtils` and counts them
+(*5,446 lines contain "NetWorkUtils"*, bottom right); ▲ ▼ step through them,
+the current one in amber. Three logs are open in tabs, each showing how many
+lines its filters keep.
 
 Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
 [Why this tool](docs/WHY_THIS_TOOL.md).
