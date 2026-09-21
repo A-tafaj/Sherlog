@@ -55,6 +55,10 @@
   across the view are highlighted cyan, case-insensitive.
 - Status bar (right side) shows how many of the currently filtered lines
   contain the selection; recounts when filters change; debounced.
+- ▲ ▼ / `F3` step through the matches from where you are, not from the top:
+  from the occurrence you selected (or clicked, in Find mode), from the current (amber) match while it's
+  on screen, or from the lines on screen once you've scrolled away. The view
+  only scrolls when the next match is off screen.
 - Ctrl+C copies the selection (within a line).
 
 ## Presets

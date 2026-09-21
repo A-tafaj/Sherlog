@@ -10,6 +10,7 @@ import com.sherlog.export.LogExporter
 import com.sherlog.filter.FilterEngine
 import com.sherlog.filter.FilterState
 import com.sherlog.filter.HighlightCounter
+import com.sherlog.filter.MatchNavigator
 import com.sherlog.filter.Preset
 import com.sherlog.filter.FilterMode
 import com.sherlog.model.LogLevel
@@ -91,13 +92,26 @@ class AppState(private val scope: CoroutineScope) {
     var highlightMatches by mutableStateOf(IntArray(0))
         private set
 
-    /** Index into [highlightMatches] of the match the user last navigated to; -1 before any jump. */
+    /** Index into [highlightMatches] of the match the user last navigated to or selected; -1 when none. */
     var currentMatchIndex by mutableStateOf(-1)
         private set
 
-    /** Position in [filteredLines] of the current match (the amber-highlighted line); -1 when none. */
+    /**
+     * Position in [filteredLines] of the current match (the amber-highlighted
+     * line); -1 when none. Hidden while counting: until a recount lands,
+     * [highlightMatches] may still index the previous view.
+     */
     val currentMatchPosition: Int
-        get() = if (currentMatchIndex in highlightMatches.indices) highlightMatches[currentMatchIndex] else -1
+        get() = if (!highlightCounting && currentMatchIndex in highlightMatches.indices) highlightMatches[currentMatchIndex] else -1
+
+    /**
+     * File line of the current match, and the needle it matched. Match
+     * positions shift on every recount (a filter change re-numbers the view),
+     * so the line is what carries the current match across one — for the same
+     * needle only; a new needle starts with no current match.
+     */
+    private var currentMatchLine = -1
+    private var currentMatchNeedle = ""
     private var highlightJob: Job? = null
 
     // Results
@@ -132,6 +146,7 @@ class AppState(private val scope: CoroutineScope) {
         highlightCounting = false
         highlightMatches = IntArray(0)
         currentMatchIndex = -1
+        currentMatchLine = -1
         statusMessage = "Indexing ${file.name}…"
         workJob = scope.launch(Dispatchers.IO) {
             try {
@@ -295,14 +310,40 @@ class AppState(private val scope: CoroutineScope) {
         }
     }
 
-    /** Called by the viewer when the user makes a new (latched) selection. */
-    fun onViewerSelection(text: String) {
-        if (text == selectionHighlight) return
+    /**
+     * Called by the viewer when the user makes a new (latched) selection on
+     * file line [lineIndex]. The selected occurrence becomes the current
+     * match, so next/prev continue from it instead of from the first match.
+     */
+    fun onViewerSelection(lineIndex: Int, text: String) {
+        if (searchMode == SearchMode.FIND && searchText.isNotBlank()) {
+            // The search box owns the highlight, so a stray in-line selection
+            // is remembered but must not kick off a recount. Clicking a found
+            // line does make it the current match, as the caret does in an editor.
+            selectionHighlight = text
+            makeLineCurrent(lineIndex)
+            return
+        }
+        if (text == selectionHighlight) {
+            // Same text picked on another line: the matches are unchanged, so
+            // just move the current one there.
+            makeLineCurrent(lineIndex)
+            return
+        }
         selectionHighlight = text
-        // In Find mode with a query, the search box owns the highlight, so a
-        // stray in-line selection is remembered but must not kick off a recount.
-        if (searchMode == SearchMode.FIND && searchText.isNotBlank()) return
+        currentMatchLine = if (text.isEmpty()) -1 else lineIndex
+        currentMatchNeedle = text
         scheduleHighlightCount()
+    }
+
+    /** Makes the match on file line [line] current, if that line is one. */
+    private fun makeLineCurrent(line: Int) {
+        if (highlightCounting) return
+        val i = MatchNavigator.indexOfLine(filteredLines, highlightMatches, line)
+        if (i < 0) return
+        currentMatchIndex = i
+        currentMatchLine = line
+        currentMatchNeedle = highlightNeedle
     }
 
     /**
@@ -356,30 +397,42 @@ class AppState(private val scope: CoroutineScope) {
         highlightCounting = true
         highlightJob = scope.launch(Dispatchers.IO) {
             delay(debounceMs)
-            val result = runCatching { HighlightCounter.matches(idx, filteredLines, needle, isRegex) }
+            val lines = filteredLines
+            val result = runCatching { HighlightCounter.matches(idx, lines, needle, isRegex) }
             if (!isActive) return@launch
             val hits = result.getOrNull()
             highlightMatches = hits ?: IntArray(0)
             highlightCount = hits?.size
-            currentMatchIndex = -1
+            // Keep the current match on its line if that line still matches:
+            // a fresh selection, or a filter change that left it in view.
+            currentMatchIndex =
+                if (hits == null || needle != currentMatchNeedle) -1
+                else MatchNavigator.indexOfLine(lines, hits, currentMatchLine)
             highlightCounting = false
         }
     }
 
-    /** Advances to the next occurrence (wrapping); returns its position in [filteredLines], or null. */
-    fun nextMatch(): Int? {
-        val n = highlightMatches.size
-        if (n == 0) return null
-        currentMatchIndex = if (currentMatchIndex + 1 >= n) 0 else currentMatchIndex + 1
-        return highlightMatches[currentMatchIndex]
-    }
+    /**
+     * Moves to the next occurrence — from the current match while it is on
+     * screen, otherwise from the screen itself ([MatchNavigator]). [visible] is
+     * the range of [filteredLines] positions on screen. Returns the new match's
+     * position, or null when there are no matches — or while they are being
+     * recounted, since until then they may index the previous view.
+     */
+    fun nextMatch(visible: IntRange): Int? =
+        moveToMatch(MatchNavigator.next(highlightMatches, currentMatchIndex, visible))
 
-    /** Steps back to the previous occurrence (wrapping); returns its position in [filteredLines], or null. */
-    fun prevMatch(): Int? {
-        val n = highlightMatches.size
-        if (n == 0) return null
-        currentMatchIndex = if (currentMatchIndex <= 0) n - 1 else currentMatchIndex - 1
-        return highlightMatches[currentMatchIndex]
+    /** The mirror of [nextMatch]. */
+    fun prevMatch(visible: IntRange): Int? =
+        moveToMatch(MatchNavigator.prev(highlightMatches, currentMatchIndex, visible))
+
+    private fun moveToMatch(matchIndex: Int): Int? {
+        if (matchIndex < 0 || highlightCounting) return null
+        currentMatchIndex = matchIndex
+        val pos = highlightMatches[matchIndex]
+        currentMatchLine = filteredLines.getOrElse(pos) { -1 }
+        currentMatchNeedle = highlightNeedle
+        return pos
     }
 
     fun cancelWork() {
@@ -428,6 +481,9 @@ class AppState(private val scope: CoroutineScope) {
                 progressLabel = "Filtering…"
             }
         }
+        // The matches index the old view until the recount below lands; mark
+        // them stale *before* swapping the view so navigation can't use them.
+        if (highlightNeedle.isNotEmpty()) highlightCounting = true
         filteredLines = result
         progress = null
         val active = activeFilterCount
@@ -438,7 +494,10 @@ class AppState(private val scope: CoroutineScope) {
             append("%,d / %,d lines".format(result.size, idx.lineCount))
             if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
         }
-        // The highlight count is relative to the filtered set; recount.
-        if (highlightNeedle.isNotEmpty()) scheduleHighlightCount(0)
+        // The highlight count is relative to the filtered set; recount. Also
+        // with an empty needle, which clears the matches: Clear Filters can
+        // empty a Find query without passing through a recount, and matches
+        // left from it would index this new view.
+        scheduleHighlightCount(0)
     }
 }

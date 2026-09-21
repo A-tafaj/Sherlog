@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.filter.Preset
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -71,8 +72,32 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
     val rootFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { rootFocus.requestFocus() }
 
-    fun scrollTo(pos: Int?) {
-        if (pos != null) scope.launch { listState.animateScrollToItem(pos) }
+    // The scroll a next/prev jump started. Until it lands, the screen isn't
+    // showing where navigation is heading, so rapid presses must step from
+    // the match being jumped to rather than re-anchor on a half-scrolled view.
+    var matchJump by remember { mutableStateOf<Job?>(null) }
+
+    /** Positions in [AppState.filteredLines] on screen — or, mid-jump, the match being jumped to. */
+    fun visiblePositions(): IntRange {
+        val target = state.currentMatchPosition
+        if (matchJump?.isActive == true && target >= 0) return target..target
+        val items = listState.layoutInfo.visibleItemsInfo
+        if (items.isEmpty()) return listState.firstVisibleItemIndex.let { it..it }
+        return items.first().index..items.last().index
+    }
+
+    /**
+     * Scrolls to a match only when it isn't fully on screen already, so
+     * stepping through the matches in view keeps the view still.
+     */
+    fun revealMatch(pos: Int?) {
+        if (pos == null) return
+        val info = listState.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == pos }
+        val onScreen = item != null && item.offset >= info.viewportStartOffset &&
+            item.offset + item.size <= info.viewportEndOffset
+        if (onScreen && matchJump?.isActive != true) return
+        matchJump = scope.launch { listState.animateScrollToItem(pos) }
     }
 
     fun onShortcut(e: KeyEvent): Boolean {
@@ -82,8 +107,8 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
             e.isCtrlPressed && e.key == Key.F -> { searchFocus.requestFocus(); true }
             e.isCtrlPressed && e.key == Key.O -> { if (!state.isBusy) onOpenClick(); true }
             e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
-            e.key == Key.F3 && e.isShiftPressed -> { scrollTo(state.prevMatch()); true }
-            e.key == Key.F3 -> { scrollTo(state.nextMatch()); true }
+            e.key == Key.F3 && e.isShiftPressed -> { revealMatch(state.prevMatch(visiblePositions())); true }
+            e.key == Key.F3 -> { revealMatch(state.nextMatch(visiblePositions())); true }
             e.key == Key.Escape -> state.onEscape()
             else -> false
         }
@@ -131,7 +156,7 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
                             highlightNeedle = state.highlightNeedle,
                             highlightIsRegex = state.highlightIsRegex,
                             currentMatchPosition = state.currentMatchPosition,
-                            onSelectionChange = { state.onViewerSelection(it) },
+                            onSelectionChange = { line, text -> state.onViewerSelection(line, text) },
                             listState = listState,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
@@ -141,8 +166,8 @@ fun App(state: AppState, onOpenClick: () -> Unit, onExportClick: () -> Unit) {
             HorizontalDivider()
             StatusBar(
                 state,
-                onPrevMatch = { state.prevMatch()?.let { pos -> scope.launch { listState.animateScrollToItem(pos) } } },
-                onNextMatch = { state.nextMatch()?.let { pos -> scope.launch { listState.animateScrollToItem(pos) } } },
+                onPrevMatch = { revealMatch(state.prevMatch(visiblePositions())) },
+                onNextMatch = { revealMatch(state.nextMatch(visiblePositions())) },
                 onClearMatch = { state.clearHighlight() },
             )
         }

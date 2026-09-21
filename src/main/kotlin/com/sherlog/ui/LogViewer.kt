@@ -70,7 +70,7 @@ fun LogViewer(
     highlightNeedle: String,
     highlightIsRegex: Boolean,
     currentMatchPosition: Int,
-    onSelectionChange: (String) -> Unit,
+    onSelectionChange: (lineIndex: Int, text: String) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
@@ -118,7 +118,7 @@ private fun LogRow(
     searchMatcher: FilterEngine.SearchMatcher?,
     highlightMatcher: FilterEngine.SearchMatcher?,
     isCurrentMatch: Boolean,
-    onSelectionChange: (String) -> Unit,
+    onSelectionChange: (lineIndex: Int, text: String) -> Unit,
 ) {
     // A line whose bytes are already cached is resolved during composition, so
     // it draws with its real text immediately. Only a genuine cache miss shows
@@ -155,7 +155,7 @@ private fun LogRow(
             // that the collapse caused by clicking the nav arrows is harmless.
             if (!sel.collapsed) {
                 val selected = text.substring(sel.min, sel.max).trim()
-                if (selected.length in MIN_HIGHLIGHT_LENGTH..MAX_HIGHLIGHT_LENGTH) onSelectionChange(selected)
+                if (selected.length in MIN_HIGHLIGHT_LENGTH..MAX_HIGHLIGHT_LENGTH) onSelectionChange(lineIndex, selected)
             }
         },
         readOnly = true,
@@ -175,7 +175,7 @@ private fun LogRow(
                 // A plain click gives this row focus with a collapsed (empty)
                 // selection -> clear the highlight. Word-selection sets it via
                 // onValueChange afterwards. Arrow clicks don't focus any row.
-                if (focus.isFocused && fieldValue.selection.collapsed) onSelectionChange("")
+                if (focus.isFocused && fieldValue.selection.collapsed) onSelectionChange(lineIndex, "")
             },
     )
 }

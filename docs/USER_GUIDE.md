@@ -84,6 +84,20 @@ the view lights up cyan, and the bottom-right corner shows
 `N lines contain "…"`. Click anywhere to clear it. Ctrl+C copies the
 selection.
 
+**Stepping through matches.** ▲ ▼ next to the count (or `F3` /
+`Shift`+`F3`) move between highlighted lines — this works for Find-mode
+searches too — and always start from where you are, never back at the top:
+
+- after a double-click, from the occurrence you clicked (in Find mode, a
+  plain click on a found line does the same);
+- while the current (amber) match is on screen, from that one;
+- once you've scrolled away, from the lines on screen: ▼ takes the first
+  match on screen (or the next one below it), ▲ the last one (or the next one
+  above).
+
+The view stays still while the next match is already visible, and only
+scrolls when it isn't. Past the last match, ▼ wraps to the first.
+
 ## Presets (top bar)
 
 - **Network Debug** — hides `adbd/CCodec/Audio/Surface/OpenGL/BufferQueue`,

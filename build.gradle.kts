@@ -19,6 +19,9 @@ dependencies {
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
     testImplementation(kotlin("test"))
+    // Headless Compose UI tests (runComposeUiTest); they run on kotlin.test
+    // like the rest, the JUnit4 flavour is just what the artifact is called.
+    testImplementation(compose.desktop.uiTestJUnit4)
 }
 
 kotlin {
