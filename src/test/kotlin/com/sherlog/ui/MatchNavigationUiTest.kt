@@ -159,7 +159,7 @@ class MatchNavigationUiTest {
             val scope = rememberCoroutineScope()
             val workspace = remember { Workspace(scope) }
             state = workspace.active
-            MaterialTheme { App(workspace, onOpenFiles = {}, onOpenFolder = {}, onExportClick = {}) }
+            MaterialTheme { App(workspace, onOpenFiles = {}, onOpenFolder = {}, onExportClick = {}, onCopyText = {}) }
         }
         runOnIdle { state.openFile(logFile) }
         waitUntil(timeoutMillis = 10_000) { state.filteredLines.size == lines && !state.isBusy }

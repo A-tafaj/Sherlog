@@ -111,6 +111,23 @@ the view lights up cyan, and the bottom-right corner shows
 `N lines contain "…"`. Click anywhere to clear it. Ctrl+C copies the
 selection.
 
+## Selecting and copying several lines
+
+Drag from one line onto another, or click a line and **Shift+click**
+another, to select every line in between. Keep dragging past the top or
+bottom edge and the view scrolls. Selected lines are tinted and the status
+bar shows `N lines selected`.
+
+Copy them with **Ctrl+C**, the status bar's **Copy**, or **right-click →
+Copy N selected lines**. Lines are copied exactly as they are in the file,
+one per line (up to 100,000 lines at a time; use Export Filtered for more).
+A plain click, **Esc**, the status bar's ✕ or any filter change clears the
+selection.
+
+Selecting across lines selects whole lines, and it doesn't highlight
+occurrences the way a selection inside one line does. A drag that stays
+within a single line still works as before.
+
 **Stepping through matches.** ▲ ▼ next to the count (or `F3` /
 `Shift`+`F3`) move between highlighted lines — this works for Find-mode
 searches too — and always start from where you are, never back at the top:
@@ -160,12 +177,12 @@ takes well under a second.
 |-----|--------|
 | `Ctrl`+`F` | Jump to the search box |
 | `F3` / `Shift`+`F3` | Next / previous match |
-| `Esc` | Clear the search, then the highlight |
+| `Esc` | Clear the line selection, then the search, then the highlight |
 | `Ctrl`+`O` | Open Log (adds tabs) |
 | `Ctrl`+`E` | Export Filtered |
 | `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | Next / previous tab (also `Ctrl`+`PgDn` / `PgUp`) |
 | `Ctrl`+`W` | Close the tab |
-| `Ctrl`+`C` | Copy the selection (within a line) |
+| `Ctrl`+`C` | Copy the selected lines, or the text selected within a line |
 
 ## Tips
 

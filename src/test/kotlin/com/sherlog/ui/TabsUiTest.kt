@@ -55,7 +55,7 @@ class TabsUiTest {
             val scope = rememberCoroutineScope()
             workspace = remember { Workspace(scope) }
             MaterialTheme {
-                App(workspace, onOpenFiles = { addClicks++ }, onOpenFolder = {}, onExportClick = {})
+                App(workspace, onOpenFiles = { addClicks++ }, onOpenFolder = {}, onExportClick = {}, onCopyText = {})
             }
         }
         runOnIdle { workspace.open(listOf(fileA, fileB)) }

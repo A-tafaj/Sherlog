@@ -82,6 +82,14 @@
   only scrolls when the next match is off screen.
 - Ctrl+C copies the selection (within a line).
 
+## Multi-line selection & copy
+- Drag across lines, or click + Shift+click, to select whole lines; dragging
+  past the edge scrolls. Selected lines are tinted; the status bar counts them.
+- Copy with Ctrl+C, the status bar's Copy, or right-click → Copy N selected
+  lines — exact file text, one line per line, up to 100,000 lines per copy.
+- A drag within one line is still a text selection that highlights its
+  occurrences; a multi-line selection doesn't highlight.
+
 ## Presets
 - **Network Debug**, **Crash Debug**, **Video Debug** — one click fills the
   exclude/keep fields per common debugging profiles.
@@ -121,5 +129,5 @@
 ## Not yet built (planned/deferred)
 - Automatic issue detection (network-failure timelines) — spec §14.
 - Automatic crash/ANR/tombstone detection.
-- Cross-line selection & copy (use Export Filtered for stack traces).
+- Character-level selection across lines (whole lines can be selected and copied).
 - Saved custom presets.

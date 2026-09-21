@@ -16,8 +16,11 @@ import androidx.compose.ui.window.rememberWindowState
 import com.sherlog.ui.App
 import com.sherlog.ui.Workspace
 import java.awt.Component
+import java.awt.EventQueue
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.UIManager
@@ -63,6 +66,13 @@ fun main() = application {
                         val dir = dialog.directory
                         val name = dialog.file
                         if (dir != null && name != null) workspace.exportActive(File(dir, name))
+                    },
+                    onCopyText = { text ->
+                        // Arrives from a worker thread (the lines are read off
+                        // the UI thread); the clipboard belongs to the UI one.
+                        EventQueue.invokeLater {
+                            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                        }
                     },
                 )
             }

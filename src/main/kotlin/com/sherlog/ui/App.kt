@@ -76,6 +76,8 @@ fun App(
     onOpenFiles: () -> Unit,
     onOpenFolder: () -> Unit,
     onExportClick: () -> Unit,
+    /** Puts text on the system clipboard (a platform concern, like the file dialogs). */
+    onCopyText: (String) -> Unit,
 ) {
     // Everything below shows the active tab.
     val state = workspace.active
@@ -124,6 +126,11 @@ fun App(
         if (e.type != KeyEventType.KeyDown) return false
         val exportEnabled = state.index != null && state.filteredLines.isNotEmpty() && !state.isBusy
         return when {
+            // With whole lines selected, Ctrl+C is theirs; otherwise it falls
+            // through to the focused text field's own copy.
+            e.isCtrlPressed && e.key == Key.C && state.lineSelection != null -> {
+                state.copySelectedLines(onCopyText); true
+            }
             e.isCtrlPressed && e.key == Key.F -> { searchFocus.requestFocus(); true }
             e.isCtrlPressed && e.key == Key.O -> { onOpenFiles(); true }
             e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
@@ -184,6 +191,11 @@ fun App(
                                 highlightIsRegex = state.highlightIsRegex,
                                 currentMatchPosition = state.currentMatchPosition,
                                 onSelectionChange = { line, text -> state.onViewerSelection(line, text) },
+                                lineSelection = state.lineSelection,
+                                onLinePressed = { state.onLinePressed(it) },
+                                onSelectLines = { from, to -> state.selectLines(from, to) },
+                                onExtendLineSelection = { state.extendLineSelection(it) },
+                                onCopyLines = { state.copySelectedLines(onCopyText) },
                                 listState = listState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
@@ -196,6 +208,7 @@ fun App(
                     onPrevMatch = { revealMatch(state.prevMatch(visiblePositions())) },
                     onNextMatch = { revealMatch(state.nextMatch(visiblePositions())) },
                     onClearMatch = { state.clearHighlight() },
+                    onCopyLines = { state.copySelectedLines(onCopyText) },
                 )
             }
         }
@@ -482,6 +495,7 @@ private fun StatusBar(
     onPrevMatch: () -> Unit,
     onNextMatch: () -> Unit,
     onClearMatch: () -> Unit,
+    onCopyLines: () -> Unit,
 ) {
     // Three parts: status on the left, the file's stats centred, occurrence
     // navigation on the right. Left and right take equal weights, so the
@@ -528,6 +542,22 @@ private fun StatusBar(
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
                 modifier = Modifier.weight(1f),
             ) {
+                val lines = state.lineSelection
+                if (lines != null) {
+                    val n = lines.last - lines.first + 1
+                    Text(
+                        "%,d line%s selected".format(n, if (n == 1) "" else "s"),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        NavArrow("Copy", MaterialTheme.colorScheme.primary, onCopyLines)
+                        NavArrow("✕", MaterialTheme.colorScheme.onSurfaceVariant) { state.clearLineSelection() }
+                    }
+                }
                 if (state.progress == null) {
                     val needle = state.highlightNeedle.let { if (it.length > 24) it.take(24) + "…" else it }
                     val highlightText = when {

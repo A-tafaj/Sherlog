@@ -36,6 +36,9 @@ enum class SearchMode {
     FIND,
 }
 
+/** Most lines one copy puts on the clipboard (~10 MB of typical logcat). */
+private const val MAX_COPY_LINES = 100_000
+
 /**
  * All state of one open file (one tab — see [Workspace]) and the background
  * jobs that mutate it. Snapshot state is safe to write from worker threads;
@@ -138,6 +141,16 @@ class AppState(
     private var currentMatchNeedle = ""
     private var highlightJob: Job? = null
 
+    /**
+     * Lines selected across rows, as positions in [filteredLines]: whole
+     * lines, for copying. A selection inside one line belongs to that row's
+     * text field and drives the highlight instead. Null when none.
+     */
+    var lineSelection by mutableStateOf<IntRange?>(null)
+        private set
+    /** Where a Shift+click selection starts: the line pressed last. */
+    private var selectionAnchor = -1
+
     // Results
     var appliedFilter by mutableStateOf(FilterState.EMPTY)
         private set
@@ -171,6 +184,8 @@ class AppState(
         highlightMatches = IntArray(0)
         currentMatchIndex = -1
         currentMatchLine = -1
+        lineSelection = null
+        selectionAnchor = -1
         this.file = file
         isLoading = true
         statusMessage = "Indexing ${file.name}…"
@@ -236,6 +251,62 @@ class AppState(
         get() = index?.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
     private val fullSpanToText: String
         get() = index?.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+
+    /** A plain press on the line at [pos]: it anchors a later Shift+click, and drops any line selection. */
+    fun onLinePressed(pos: Int) {
+        selectionAnchor = pos
+        lineSelection = null
+    }
+
+    /** Selects the lines at positions [from]..[to] (either order), inclusive. */
+    fun selectLines(from: Int, to: Int) {
+        if (selectionAnchor < 0) selectionAnchor = from
+        lineSelection = minOf(from, to)..maxOf(from, to)
+        // Across lines there is no one piece of text to highlight, so drop the
+        // one a drag picked up in its first line. A Find query keeps its own.
+        if (selectionHighlight.isNotEmpty() && !(searchMode == SearchMode.FIND && searchText.isNotBlank())) {
+            clearHighlight()
+        }
+    }
+
+    /** Shift+click on the line at [pos]: selects from the line pressed last. */
+    fun extendLineSelection(pos: Int) = selectLines(if (selectionAnchor >= 0) selectionAnchor else pos, pos)
+
+    fun clearLineSelection() {
+        lineSelection = null
+    }
+
+    /**
+     * Hands the selected lines — exactly as in the file, one per line — to
+     * [write] (the clipboard), read off the UI thread. Capped at [maxLines]:
+     * past that, Export Filtered is the tool, not the clipboard.
+     */
+    fun copySelectedLines(write: (String) -> Unit, maxLines: Int = MAX_COPY_LINES) {
+        val range = lineSelection ?: return
+        val prov = provider ?: return
+        val lines = filteredLines
+        scope.launch(Dispatchers.IO) {
+            val total = range.last - range.first + 1
+            val n = minOf(total, maxLines)
+            val text = runCatching {
+                buildString {
+                    for (k in 0 until n) {
+                        if (k > 0) append(System.lineSeparator())
+                        append(prov.line(lines[range.first + k]))
+                    }
+                }
+            }.getOrElse {
+                statusMessage = "Copy failed: ${it.message}"
+                return@launch
+            }
+            write(text)
+            statusMessage = if (n < total) {
+                "Copied the first %,d of %,d selected lines — use Export Filtered for more.".format(n, total)
+            } else {
+                "Copied %,d line%s.".format(n, if (n == 1) "" else "s")
+            }
+        }
+    }
 
     /** The tab is closing: stop its work and release its file handle. */
     fun close() {
@@ -430,6 +501,10 @@ class AppState(
      * nothing to clear so the key can fall through.
      */
     fun onEscape(): Boolean {
+        if (lineSelection != null) {
+            lineSelection = null
+            return true
+        }
         if (searchText.isNotBlank()) {
             searchText = ""
             if (searchMode == SearchMode.FILTER) scheduleApply(0) else scheduleHighlightCount(0)
@@ -562,6 +637,9 @@ class AppState(
         // The matches index the old view until the recount below lands; mark
         // them stale *before* swapping the view so navigation can't use them.
         if (highlightNeedle.isNotEmpty()) highlightCounting = true
+        // Selected positions would point at different lines in the new view.
+        lineSelection = null
+        selectionAnchor = -1
         filteredLines = result
         progress = null
         val active = activeFilterCount
