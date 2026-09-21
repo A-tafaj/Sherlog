@@ -26,9 +26,32 @@ Captures made with `adb logcat > file.txt` in Windows PowerShell work too:
 PowerShell saves them as UTF-16, which Sherlog detects and reads as-is.
 Exporting such a file writes UTF-8.
 
-When it finishes, the dashboard row shows **Total lines / Errors / Warnings /
-Unique tags / Filtered**, and the time-range fields are pre-filled with the
-first and last timestamp in the file.
+When it finishes, the bottom bar shows `filtered / total lines` on the left
+and the file's **Errors / Warnings / Unique tags** in the middle, and the
+time-range fields are pre-filled with the first and last timestamp in the file.
+
+## Several files at once (tabs)
+
+Every opened file gets its own tab across the top, as in Sublime Text:
+
+- **Open Log** lets you pick several files at once (Ctrl/Shift-click in the
+  dialog); **+** at the end of the tab strip does the same.
+- **Open Folder** opens every `.txt` and `.log` file directly inside the
+  chosen folder (subfolders are skipped), in name order.
+- Click a tab to show it, **×** to close it. Hover a tab for the file's full
+  path. Opening a file that's already open just shows its tab.
+
+Each tab keeps its own filters, search, highlight and scroll position. To
+use the same filters everywhere, set them up in one tab and click **Apply
+filters to all tabs** (next to Clear Filters). It copies the tags, PIDs,
+levels, time range, exclude/keep text, presets and search to every other tab:
+
+- Tags apply by name — a tag another file doesn't have simply matches nothing.
+- The time range carries over only if you narrowed it. Left at the file's full
+  span, each tab keeps its own span, since different logs cover different times.
+
+Afterwards each tab shows its line count, so you can see at a glance which
+files have hits. The button waits while files are still loading.
 
 ## Reading the log view
 
@@ -138,8 +161,10 @@ takes well under a second.
 | `Ctrl`+`F` | Jump to the search box |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the search, then the highlight |
-| `Ctrl`+`O` | Open Log |
+| `Ctrl`+`O` | Open Log (adds tabs) |
 | `Ctrl`+`E` | Export Filtered |
+| `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | Next / previous tab (also `Ctrl`+`PgDn` / `PgUp`) |
+| `Ctrl`+`W` | Close the tab |
 | `Ctrl`+`C` | Copy the selection (within a line) |
 
 ## Tips

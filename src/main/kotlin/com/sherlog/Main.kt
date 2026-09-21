@@ -14,9 +14,13 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sherlog.ui.App
-import com.sherlog.ui.AppState
+import com.sherlog.ui.Workspace
+import java.awt.Component
 import java.awt.FileDialog
+import java.awt.Frame
 import java.io.File
+import javax.swing.JFileChooser
+import javax.swing.UIManager
 
 fun main() = application {
     Window(
@@ -29,7 +33,7 @@ fun main() = application {
         state = rememberWindowState(width = 1400.dp, height = 900.dp),
     ) {
         val scope = rememberCoroutineScope()
-        val state = remember { AppState(scope) }
+        val workspace = remember { Workspace(scope) }
         // The default scrollbar blends into the dark theme, so it is lightened
         // — but kept restrained, since it sits beside dense log text and is
         // the only hint that a region scrolls at all.
@@ -40,27 +44,50 @@ fun main() = application {
         MaterialTheme(colorScheme = darkColorScheme()) {
             CompositionLocalProvider(LocalScrollbarStyle provides scrollbarStyle) {
                 App(
-                    state = state,
-                    onOpenClick = {
-                        val dialog = FileDialog(window, "Open Log File", FileDialog.LOAD)
-                        dialog.file = "*.txt;*.log"
-                        dialog.isVisible = true
-                        val file = dialog.files.firstOrNull()
-                        if (file != null) state.openFile(file)
+                    workspace = workspace,
+                    onOpenFiles = {
+                        val files = chooseLogFiles(window)
+                        if (files.isNotEmpty()) workspace.open(files)
+                    },
+                    onOpenFolder = {
+                        val start = workspace.active.file?.parentFile
+                        chooseFolder(window, start)?.let(workspace::openFolder)
                     },
                     onExportClick = {
                         val dialog = FileDialog(window, "Export Filtered Logs", FileDialog.SAVE)
                         // Default to a name derived from the source so a re-export
                         // doesn't collide with the file currently open.
-                        dialog.file = state.index?.file?.nameWithoutExtension
+                        dialog.file = workspace.active.index?.file?.nameWithoutExtension
                             ?.let { "${it}_filtered.txt" } ?: "cleaned_logcat.txt"
                         dialog.isVisible = true
                         val dir = dialog.directory
                         val name = dialog.file
-                        if (dir != null && name != null) state.export(File(dir, name))
+                        if (dir != null && name != null) workspace.exportActive(File(dir, name))
                     },
                 )
             }
         }
     }
+}
+
+/** The native file picker, allowing several files at once. */
+private fun chooseLogFiles(parent: Frame): List<File> {
+    val dialog = FileDialog(parent, "Open Log Files", FileDialog.LOAD)
+    dialog.file = "*.txt;*.log"
+    dialog.isMultipleMode = true
+    dialog.isVisible = true
+    return dialog.files.toList()
+}
+
+/**
+ * A folder picker. AWT's native dialog can't pick folders on Windows, so this
+ * is Swing's — given the system look, so it doesn't stand out as foreign.
+ */
+private fun chooseFolder(parent: Component, start: File?): File? {
+    runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
+    val chooser = JFileChooser(start).apply {
+        dialogTitle = "Open Folder"
+        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+    }
+    return if (chooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
 }

@@ -58,7 +58,7 @@ takes about a minute — see [Run](#run) below.
 - Parses threadtime format: timestamp, PID, TID, level, tag.
 - Reads UTF-8 and UTF-16 logs — including PowerShell's `adb logcat > file.txt`
   captures, which are UTF-16.
-- Dashboard: total lines, errors, warnings, unique tags, filtered count.
+- Status bar: filtered / total lines, plus errors, warnings and unique tags.
 - Top-tags list with counts, sortable by count or A–Z, searchable, with
   checkbox include-filtering.
 - Filters: tags, PIDs, time range (`MM-DD HH:MM:SS`), levels,
@@ -68,6 +68,8 @@ takes about a minute — see [Run](#run) below.
 - Debug presets: Network / Crash / Video — **combinable**, so Crash + Network
   shows both at once.
 - Export the filtered view to a new `.txt`/`.log` file (streaming).
+- **Tabs**, Sublime-style: open several files (or a whole folder) at once,
+  each with its own filters, and apply one tab's filters to all of them.
 - All heavy work runs on background coroutines with progress + cancel.
 
 ## Roadmap
@@ -75,7 +77,7 @@ takes about a minute — see [Run](#run) below.
 Planned, roughly in priority order. Contributions welcome — open an issue
 before starting anything large.
 
-- [ ] **Multiple files open at once** — tabs or split panes, so several dumps can be compared
+- [x] **Multiple files open at once** — tabs, so several dumps can be compared
       without reopening. Each tab keeps its own index and filter state.
 - [ ] **Save the current filter set as a preset** — name and store whatever is
       configured (tags, PIDs, levels, time range, exclude/keep text) alongside

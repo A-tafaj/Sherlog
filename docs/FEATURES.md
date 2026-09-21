@@ -11,6 +11,22 @@
   UTF-16, opens like any other. Detected automatically; nothing is converted.
 - Indexing shows progress and is cancellable. 147 MB / 2M lines ≈ 0.6 s.
 
+## Tabs
+- Several files open at once, one tab each (Sublime-style): **Open Log**
+  picks several files, **Open Folder** opens every `.txt`/`.log` directly in
+  a folder, and **+** at the end of the tab strip adds more.
+- A file that is already open isn't opened twice — its tab is shown instead.
+- Each tab keeps its own filters, search, highlight and scroll position.
+- **Apply filters to all tabs** copies the current tab's filters and search to
+  every other tab. Tags apply by name; the time range carries over only if it
+  was narrowed, since each file's own span may not overlap.
+- With filters active, each tab shows its line count, so the files with hits
+  stand out.
+- Folders open up to two files at a time, so a folder of big logs doesn't
+  thrash the disk. Each open file costs its own index (~25 bytes per line).
+- `Ctrl+Tab` / `Ctrl+Shift+Tab` (or `Ctrl+PgDn` / `Ctrl+PgUp`) switch tabs,
+  `Ctrl+W` closes one.
+
 ## Parsing
 - Extracts timestamp, PID, TID, level (V/D/I/W/E/F) and tag from every line.
 - Two timestamp formats: classic logcat (`07-12 14:10:14.880`) and
@@ -19,9 +35,11 @@
 - Lines that don't match the format are kept with level "Other" and inherit
   the previous line's timestamp so stack traces stay with their crash.
 
-## Dashboard
-- Total lines, Errors (incl. Fatal), Warnings, Unique tags, Filtered count —
-  updates live with the filters.
+## Status bar
+- Left: `filtered / total lines` (or progress with Cancel while working).
+- Centre: the file's Errors (incl. Fatal), Warnings and Unique tags.
+- Right: the selection/Find match count with ▲ ▼ navigation.
+- The top bar and status bar are kept compact so the log view gets the height.
 
 ## Tag analysis
 - Full tag list with per-tag line counts.
@@ -51,7 +69,7 @@
   - **Find** — highlights matches in place; ▲ ▼ arrows step through them.
 - Match count in the status bar; regex works in both modes.
 - Shortcuts: `Ctrl+F` search, `F3`/`Shift+F3` next/previous, `Esc` clear,
-  `Ctrl+O` open, `Ctrl+E` export.
+  `Ctrl+O` open, `Ctrl+E` export, `Ctrl+Tab` / `Ctrl+W` next / close tab.
 
 ## Selection highlighting
 - Select text in any log line (drag or double-click a word): all occurrences

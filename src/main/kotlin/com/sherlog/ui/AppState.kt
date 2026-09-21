@@ -1,5 +1,6 @@
 package com.sherlog.ui
 
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,10 +17,12 @@ import com.sherlog.filter.FilterMode
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
@@ -34,16 +37,37 @@ enum class SearchMode {
 }
 
 /**
- * All UI state and the background jobs that mutate it. Snapshot state is
- * safe to write from worker threads; Compose picks the changes up.
+ * All state of one open file (one tab — see [Workspace]) and the background
+ * jobs that mutate it. Snapshot state is safe to write from worker threads;
+ * Compose picks the changes up.
+ *
+ * [indexDispatcher] runs indexing, so a [Workspace] opening a whole folder
+ * can cap how many files are read at once.
  */
-class AppState(private val scope: CoroutineScope) {
+class AppState(
+    private val scope: CoroutineScope,
+    private val indexDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
 
     // Loaded file
+    /** The file this tab shows — set as soon as it starts opening; null for a blank tab. */
+    var file by mutableStateOf<File?>(null)
+        private set
     var index by mutableStateOf<LogIndex?>(null)
         private set
     var provider by mutableStateOf<LineTextProvider?>(null)
         private set
+
+    /** True from [openFile] until indexing finishes or fails (also while queued behind other files). */
+    var isLoading by mutableStateOf(false)
+        private set
+    @Volatile private var loadGeneration = 0
+
+    /**
+     * The viewer's scroll position. Kept here rather than remembered in the
+     * UI so each tab returns to where it was when switched back to.
+     */
+    val listState = LazyListState()
 
     // Filter inputs (raw UI text; compiled into FilterState on apply)
     var selectedTags by mutableStateOf(emptySet<String>())
@@ -125,7 +149,7 @@ class AppState(private val scope: CoroutineScope) {
         private set
     var progressLabel by mutableStateOf("")
         private set
-    var statusMessage by mutableStateOf("Open a logcat file to begin.")
+    var statusMessage by mutableStateOf("Open a log file or a folder to begin.")
         private set
 
     private var workJob: Job? = null
@@ -147,13 +171,21 @@ class AppState(private val scope: CoroutineScope) {
         highlightMatches = IntArray(0)
         currentMatchIndex = -1
         currentMatchLine = -1
+        this.file = file
+        isLoading = true
         statusMessage = "Indexing ${file.name}…"
-        workJob = scope.launch(Dispatchers.IO) {
+        // A superseded load's cleanup runs late, after the next load has
+        // begun; the generation keeps it from clearing that one's isLoading.
+        val generation = ++loadGeneration
+        workJob = scope.launch(indexDispatcher) {
             try {
                 val idx = LogIndexer.index(file) { done, total ->
                     progress = if (total > 0) done.toFloat() / total else 0f
                     progressLabel = "Indexing: %,d / %,d MB".format(done shr 20, total shr 20)
                 }
+                // Cancelled while finishing the scan (tab closed, another file
+                // opened): don't take a file handle nobody will release.
+                ensureActive()
                 index = idx
                 provider = LineTextProvider(idx)
                 // Pre-fill the time range with the log's actual span so the
@@ -166,8 +198,54 @@ class AppState(private val scope: CoroutineScope) {
                 if (isActive) statusMessage = "Failed to open ${file.name}: ${e.message}"
             } finally {
                 progress = null
+                if (generation == loadGeneration) isLoading = false
             }
         }
+    }
+
+    /** Puts a one-off notice in the status bar (or the empty viewer, for a blank tab). */
+    fun showStatus(message: String) {
+        statusMessage = message
+    }
+
+    /**
+     * Takes over [source]'s filters — everything the filter panel and the
+     * search box hold — and re-applies. Tags carry over by name; one this
+     * file doesn't have simply matches nothing. The time range carries over
+     * only where [source] narrowed it: its pre-filled full span says nothing
+     * about this file's span, which may not even overlap.
+     */
+    fun copyFiltersFrom(source: AppState) {
+        selectedTags = source.selectedTags
+        tagMode = source.tagMode
+        pidText = source.pidText
+        pidMode = source.pidMode
+        enabledLevels = source.enabledLevels
+        excludeText = source.excludeText
+        includeText = source.includeText
+        selectedPresets = source.selectedPresets
+        searchText = source.searchText
+        searchIsRegex = source.searchIsRegex
+        searchMode = source.searchMode
+        timeFromText = if (source.timeFromText == source.fullSpanFromText) fullSpanFromText else source.timeFromText
+        timeToText = if (source.timeToText == source.fullSpanToText) fullSpanToText else source.timeToText
+        scheduleApply(0)
+    }
+
+    private val fullSpanFromText: String
+        get() = index?.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+    private val fullSpanToText: String
+        get() = index?.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
+
+    /** The tab is closing: stop its work and release its file handle. */
+    fun close() {
+        loadGeneration++
+        isLoading = false
+        cancelWork()
+        applyJob?.cancel()
+        highlightJob?.cancel()
+        provider?.close()
+        provider = null
     }
 
     /** Re-applies filters after a short debounce; called on every filter-input change. */
