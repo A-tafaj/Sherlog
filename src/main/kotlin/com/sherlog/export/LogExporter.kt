@@ -1,5 +1,6 @@
 package com.sherlog.export
 
+import com.sherlog.core.LogEncoding
 import com.sherlog.core.LogIndex
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -10,7 +11,8 @@ import java.nio.file.StandardCopyOption
 
 /**
  * Streams the given line indices from the source file into [target].
- * Sequential single pass; never holds more than one line in memory.
+ * Sequential single pass; never holds more than one line in memory. UTF-8
+ * sources are copied byte for byte; UTF-16 sources are written as UTF-8.
  *
  * The output is written to a temporary sibling file and moved over [target]
  * only after the whole pass succeeds. This makes exporting onto the source
@@ -60,9 +62,19 @@ object LogExporter {
                             read += r
                         }
                         pos += read
-                        out.write(buffer, 0, read)
-                        // Guarantee a terminator when the source line lacked one (last line).
-                        if (read == 0 || buffer[read - 1] != '\n'.code.toByte()) out.write('\n'.code)
+                        if (index.encoding == LogEncoding.UTF_8) {
+                            out.write(buffer, 0, read)
+                            // Guarantee a terminator when the source line lacked one (last line).
+                            if (read == 0 || buffer[read - 1] != '\n'.code.toByte()) out.write('\n'.code)
+                        } else {
+                            // UTF-16 goes out as UTF-8, each line keeping its own
+                            // terminator. A raw copy would be UTF-16 without the
+                            // BOM (it precedes line 0, outside every line), which
+                            // most tools misread.
+                            val text = String(buffer, 0, read, index.encoding.charset)
+                            out.write(text.toByteArray(Charsets.UTF_8))
+                            if (!text.endsWith('\n')) out.write('\n'.code)
+                        }
                         written++
                     }
                 }

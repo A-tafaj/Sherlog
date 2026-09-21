@@ -6,6 +6,9 @@
   loaded into memory (~25 bytes of metadata per line; text stays on disk).
 - Handles LF and CRLF endings, missing final newline, lines of any length,
   and non-logcat lines mixed in (markers, raw stack traces).
+- Reads UTF-8 and UTF-16 (LE/BE, with or without a BOM) as-is — so a log
+  captured with `adb logcat > file.txt` in Windows PowerShell, which writes
+  UTF-16, opens like any other. Detected automatically; nothing is converted.
 - Indexing shows progress and is cancellable. 147 MB / 2M lines ≈ 0.6 s.
 
 ## Parsing
@@ -79,7 +82,8 @@
 
 ## Export
 - Writes the currently filtered lines to a new `.txt`/`.log` file, streaming
-  (266 K lines ≈ 0.1 s). Byte-exact copies of the original lines.
+  (266 K lines ≈ 0.1 s). Byte-exact copies of the original lines; a UTF-16
+  source is written out as UTF-8.
 
 ## Viewer
 - Severity coloring (red/pink/orange/green/blue/gray) + row tint for E/W.

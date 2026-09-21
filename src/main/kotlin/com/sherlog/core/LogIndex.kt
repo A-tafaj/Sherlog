@@ -9,7 +9,10 @@ import java.io.File
  */
 class LogIndex(
     val file: File,
-    /** Byte offset of each line start, plus one trailing sentinel = file length. Size = lineCount + 1. */
+    /**
+     * Byte offset of each line start, plus one trailing sentinel = file length.
+     * Size = lineCount + 1. The first line starts after any byte-order mark.
+     */
     val offsets: LongArray,
     /** Parser timestamp per line (ms since Jan 1 of the reference year); 0 when unparsed. */
     val timestamps: LongArray,
@@ -23,6 +26,8 @@ class LogIndex(
     val tags: Array<String>,
     /** Line count per tag, parallel to [tags]. */
     val tagCounts: IntArray,
+    /** How the file's bytes decode; every reader of line bytes goes through it. */
+    val encoding: LogEncoding = LogEncoding.UTF_8,
 ) {
     val lineCount: Int get() = offsets.size - 1
 

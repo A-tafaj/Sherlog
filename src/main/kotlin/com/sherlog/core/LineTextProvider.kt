@@ -57,9 +57,8 @@ class LineTextProvider(private val index: LogIndex) : Closeable {
             System.arraycopy(block, inBlock, bytes, copied, n)
             copied += n
         }
-        // Strip line terminators kept in the byte extent.
-        while (len > 0 && (bytes[len - 1] == '\n'.code.toByte() || bytes[len - 1] == '\r'.code.toByte())) len--
-        return String(bytes, 0, len, Charsets.UTF_8)
+        // Decoding strips the line terminators kept in the byte extent.
+        return index.encoding.decodeLine(bytes, 0, len)
     }
 
     private fun blockAt(blockId: Long): ByteArray {

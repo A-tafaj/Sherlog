@@ -119,9 +119,7 @@ object FilterEngine {
                     read += r
                 }
                 pos += read
-                var textLen = read
-                while (textLen > 0 && (bytes[textLen - 1] == '\n'.code.toByte() || bytes[textLen - 1] == '\r'.code.toByte())) textLen--
-                val line = String(bytes, 0, textLen, Charsets.UTF_8)
+                val line = index.encoding.decodeLine(bytes, 0, read)
 
                 if (excludes.any { line.contains(it, ignoreCase = true) }) continue
                 if (includes.isNotEmpty() && includes.none { line.contains(it, ignoreCase = true) }) continue

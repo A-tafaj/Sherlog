@@ -22,6 +22,10 @@ supported. Any size works — a 150 MB file indexes in under a second, gigabyte 
 seconds with a progress bar. While it loads you'll see
 `Indexing: X / Y MB` at the bottom; you can Cancel.
 
+Captures made with `adb logcat > file.txt` in Windows PowerShell work too:
+PowerShell saves them as UTF-16, which Sherlog detects and reads as-is.
+Exporting such a file writes UTF-8.
+
 When it finishes, the dashboard row shows **Total lines / Errors / Warnings /
 Unique tags / Filtered**, and the time-range fields are pre-filled with the
 first and last timestamp in the file.

@@ -56,6 +56,8 @@ takes about a minute — see [Run](#run) below.
   1.5M-line files index in under a second. The file is **indexed, never loaded
   into memory**; line text is read from disk on demand.
 - Parses threadtime format: timestamp, PID, TID, level, tag.
+- Reads UTF-8 and UTF-16 logs — including PowerShell's `adb logcat > file.txt`
+  captures, which are UTF-16.
 - Dashboard: total lines, errors, warnings, unique tags, filtered count.
 - Top-tags list with counts, sortable by count or A–Z, searchable, with
   checkbox include-filtering.

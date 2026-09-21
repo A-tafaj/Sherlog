@@ -7,7 +7,8 @@ import java.io.File
 
 /**
  * Streams a log file once and builds a [LogIndex]. Never holds more than one
- * read buffer of file content in memory, so 1GB+ files are fine.
+ * read buffer of file content in memory, so 1GB+ files are fine. UTF-8 and
+ * UTF-16 files are both read as-is ([LogEncoding]); nothing is converted.
  */
 object LogIndexer {
 
@@ -21,6 +22,8 @@ object LogIndexer {
     suspend fun index(file: File, onProgress: (Long, Long) -> Unit = { _, _ -> }): LogIndex {
         val ctx = currentCoroutineContext()
         val totalBytes = file.length()
+        val (encoding, bomLength) = LogEncoding.detect(file)
+        val unit = encoding.unitSize
 
         val offsets = LongList()
         val timestamps = LongList()
@@ -39,16 +42,16 @@ object LogIndexer {
         // Carry buffer for a line spanning read-buffer boundaries.
         var carry = ByteArray(4096)
         var carryLen = 0
-        var lineStartOffset = 0L
-        var bytesRead = 0L
+        // The BOM is not part of any line: the first one starts after it.
+        var lineStartOffset = bomLength.toLong()
+        // File offset of buffer[0].
+        var bytesRead = bomLength.toLong()
         var nextProgressAt = 0L
 
         fun addLine(bytes: ByteArray, from: Int, len: Int) {
             offsets.add(lineStartOffset)
-            // Strip trailing \r for parsing; offsets keep the raw extent.
-            var textLen = len
-            if (textLen > 0 && bytes[from + textLen - 1] == '\r'.code.toByte()) textLen--
-            val line = String(bytes, from, textLen, Charsets.UTF_8)
+            // Decoding drops the trailing \r; offsets keep the raw extent.
+            val line = encoding.decodeLine(bytes, from, len)
             if (LogcatLineParser.parse(line, parsed)) {
                 timestamps.add(parsed.timestampMs)
                 lastTimestampMs = parsed.timestampMs
@@ -70,14 +73,22 @@ object LogIndexer {
         }
 
         file.inputStream().use { input ->
+            input.skipNBytes(bomLength.toLong())
             val buffer = ByteArray(READ_BUFFER_SIZE)
+            // UTF-16 is scanned a whole code unit at a time. A read ending
+            // mid-unit leaves its stray byte ("held") at the front of the
+            // buffer for the next read, so a unit never splits across reads.
+            var held = 0
             while (true) {
-                val n = input.read(buffer)
-                if (n < 0) break
+                val r = input.read(buffer, held, buffer.size - held)
+                if (r < 0) break
+                val avail = held + r
+                val n = avail - avail % unit
                 var segmentStart = 0
                 var i = 0
                 while (i < n) {
-                    if (buffer[i] == '\n'.code.toByte()) {
+                    val lineFeed = if (unit == 1) buffer[i] == '\n'.code.toByte() else encoding.isLineFeedAt(buffer, i)
+                    if (lineFeed) {
                         val segLen = i - segmentStart
                         if (carryLen > 0) {
                             carry = ensureCapacity(carry, carryLen + segLen)
@@ -87,10 +98,10 @@ object LogIndexer {
                         } else {
                             addLine(buffer, segmentStart, segLen)
                         }
-                        lineStartOffset = bytesRead + i + 1
-                        segmentStart = i + 1
+                        lineStartOffset = bytesRead + i + unit
+                        segmentStart = i + unit
                     }
-                    i++
+                    i += unit
                 }
                 // Stash the unterminated tail for the next read.
                 val tail = n - segmentStart
@@ -100,11 +111,20 @@ object LogIndexer {
                     carryLen += tail
                 }
                 bytesRead += n
+                held = avail - n
+                if (held > 0) System.arraycopy(buffer, n, buffer, 0, held)
                 if (bytesRead >= nextProgressAt) {
                     ctx.ensureActive()
                     onProgress(bytesRead, totalBytes)
                     nextProgressAt = bytesRead + PROGRESS_EVERY_BYTES
                 }
+            }
+            // A stray byte at EOF (a UTF-16 capture cut off mid-character)
+            // still belongs to the last line.
+            if (held > 0) {
+                carry = ensureCapacity(carry, carryLen + held)
+                System.arraycopy(buffer, 0, carry, carryLen, held)
+                carryLen += held
             }
         }
         // Final line without a trailing newline.
@@ -132,6 +152,7 @@ object LogIndexer {
             tagIds = tagIds.toArray(),
             tags = tagNames.toTypedArray(),
             tagCounts = tagCounts.toArray(),
+            encoding = encoding,
         )
     }
 

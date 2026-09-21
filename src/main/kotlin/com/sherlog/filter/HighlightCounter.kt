@@ -50,9 +50,7 @@ object HighlightCounter {
                     read += r
                 }
                 pos += read
-                var textLen = read
-                while (textLen > 0 && (buffer[textLen - 1] == '\n'.code.toByte() || buffer[textLen - 1] == '\r'.code.toByte())) textLen--
-                val line = String(buffer, 0, textLen, Charsets.UTF_8)
+                val line = index.encoding.decodeLine(buffer, 0, read)
                 if (matcher.matches(line)) hits.add(k)
             }
         }
