@@ -140,6 +140,7 @@ class AppState(
     private var currentMatchLine = -1
     private var currentMatchNeedle = ""
     private var highlightJob: Job? = null
+    @Volatile private var highlightGeneration = 0
 
     /**
      * Lines selected across rows, as positions in [filteredLines]: whole
@@ -433,9 +434,12 @@ class AppState(
             if (f.searchQuery.isNotBlank()) n++
             val idx = index
             if (idx != null) {
-                val narrowedStart = f.timeFromMs?.let { from -> idx.firstTimestampMs?.let { from > it } } ?: false
-                val narrowedEnd = f.timeToMs?.let { to -> idx.lastTimestampMs?.let { to < it } } ?: false
-                if (narrowedStart || narrowedEnd) n++
+                // Anything other than this file's own pre-filled span counts —
+                // including a bound copied from another tab that happens to sit
+                // outside this file's range. Comparing "is it narrower?"
+                // instead made two tabs with the very same filters report
+                // different numbers after Apply filters to all tabs.
+                if (f.timeFromMs != idx.firstTimestampMs || f.timeToMs != idx.lastTimestampMs) n++
             }
             return n
         }
@@ -553,6 +557,10 @@ class AppState(
      */
     private fun scheduleHighlightCount(debounceMs: Long = 400) {
         highlightJob?.cancel()
+        // Cancelling can't stop a count that is already past its last check,
+        // and it would then write its matches over the ones cleared here. The
+        // generation lets a superseded count recognise itself and drop them.
+        val generation = ++highlightGeneration
         val idx = index
         val needle = highlightNeedle
         val isRegex = highlightIsRegex
@@ -568,7 +576,7 @@ class AppState(
             delay(debounceMs)
             val lines = filteredLines
             val result = runCatching { HighlightCounter.matches(idx, lines, needle, isRegex) }
-            if (!isActive) return@launch
+            if (!isActive || generation != highlightGeneration) return@launch
             val hits = result.getOrNull()
             highlightMatches = hits ?: IntArray(0)
             highlightCount = hits?.size

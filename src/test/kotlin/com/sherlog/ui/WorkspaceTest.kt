@@ -167,6 +167,42 @@ class WorkspaceTest {
     }
 
     @Test
+    fun `every tab counts the same filters the same way`() {
+        // b's lines all fall after the time range a narrows to, so a bound
+        // copied from a can't be "narrower" than b's own span.
+        val fileA = log(
+            "a.txt",
+            line("10:00:00", 'I', "OkHttp", "alpha early"),
+            line("10:06:00", 'I', "OkHttp", "alpha ok"),
+            line("10:08:00", 'D', "OkHttp", "alpha debug"),
+        )
+        val fileB = log(
+            "b.txt",
+            line("10:30:00", 'I', "OkHttp", "bravo ok"),
+            line("10:31:00", 'I', "OkHttp", "bravo noise"),
+            line("10:40:00", 'D', "Audio", "bravo debug"),
+        )
+        val ws = Workspace(scope)
+        ws.open(listOf(fileA, fileB))
+        ws.awaitLoaded()
+        val (ta, tb) = ws.tabs
+
+        assertEquals(0, ta.activeFilterCount) // the pre-filled span is not a filter
+        assertEquals(0, tb.activeFilterCount)
+
+        ta.selectedTags = setOf("OkHttp")
+        ta.excludeText = "noise"
+        ta.enabledLevels = LogLevel.entries.toSet() - LogLevel.DEBUG
+        ta.timeFromText = "07-12 10:05:00.000"
+        ta.scheduleApply(0)
+        awaitUntil("a to re-filter") { ta.activeFilterCount == 4 }
+
+        ws.applyFiltersToAll()
+        awaitUntil("b to re-filter") { tb.filteredLines.size == 1 }
+        assertEquals(4, tb.activeFilterCount, "the same filters must count the same on every tab")
+    }
+
+    @Test
     fun `export refuses a target another tab has open`() {
         val ws = Workspace(scope)
         val fileB = b

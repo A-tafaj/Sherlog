@@ -165,9 +165,12 @@ class TabsUiTest {
         waitUntil(timeoutMillis = 10_000) { bravo.filteredLines.size == 2 }
         assertEquals("010, 020", bravo.includeText)
         assertSame(alpha, ws.active) // the source tab stays shown
+        onNodeWithText("Clear Filters (1)").assertExists()
 
         tab("bravo.txt").performClick()
         waitForIdle()
+        // The tab that was filtered from elsewhere says so too.
+        onNodeWithText("Clear Filters (1)").assertExists()
         row("bravo 010").assertIsDisplayed()
         assertEquals(false, rowIsShown("bravo 011"))
     }

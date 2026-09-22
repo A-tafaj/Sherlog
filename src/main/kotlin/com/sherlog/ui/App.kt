@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -401,12 +402,24 @@ private fun TopBar(
                     )
                 }
             }
+            // The count is the cue that this view is filtered at all — easy to
+            // miss on a tab whose filters came from Apply filters to all tabs.
+            val filterCount = state.activeFilterCount
             TextButton(
                 onClick = { state.clearFilters() },
                 enabled = state.index != null,
                 modifier = CompactButton,
                 contentPadding = CompactButtonPadding,
-            ) { BarLabel("Clear Filters") }
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = if (filterCount > 0) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            ) {
+                BarLabel(
+                    if (filterCount > 0) "Clear Filters ($filterCount)" else "Clear Filters",
+                    bold = filterCount > 0,
+                )
+            }
             if (workspace.tabs.size > 1) {
                 TooltipArea(
                     tooltip = {
@@ -449,8 +462,8 @@ private val CompactButton = Modifier.height(28.dp)
 private val CompactButtonPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
 
 @Composable
-private fun BarLabel(text: String) {
-    Text(text, fontSize = 12.sp)
+private fun BarLabel(text: String, bold: Boolean = false) {
+    Text(text, fontSize = 12.sp, fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal)
 }
 
 @Composable
