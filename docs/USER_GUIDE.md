@@ -103,6 +103,13 @@ two modes:
 Typing takes over the highlight from a double-click selection; clear the box
 to get it back.
 
+**Searching for what you selected.** Select any text in a line and press
+`Ctrl`+`F`: it goes straight into the search box, no copying needed. The mode
+stays as it is — Filter narrows the view to it, Find highlights it in place.
+Then `Enter` jumps to the nearest match from where you are and `Shift`+`Enter`
+goes back, the same as the ▲ ▼ arrows. On a very large file the first `Enter`
+waits for the match count to finish rather than doing nothing.
+
 ## Highlight occurrences of a selection
 
 Select any text inside a log line — drag-select a phrase or **double-click a
@@ -175,7 +182,8 @@ takes well under a second.
 
 | Key | Action |
 |-----|--------|
-| `Ctrl`+`F` | Jump to the search box |
+| `Ctrl`+`F` | Search for the selected text, or just jump to the search box |
+| `Enter` / `Shift`+`Enter` | In the search box: next / previous match |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the line selection, then the search, then the highlight |
 | `Ctrl`+`O` | Open Log (adds tabs) |

@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -68,7 +69,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.filter.Preset
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun App(
@@ -98,6 +101,10 @@ fun App(
     // showing where navigation is heading, so rapid presses must step from
     // the match being jumped to rather than re-anchor on a half-scrolled view.
     var matchJump by remember(state) { mutableStateOf<Job?>(null) }
+    // A jump waiting for the match count to finish, and whether the search
+    // box has focus (Enter only navigates from there).
+    var pendingJump by remember(state) { mutableStateOf<Job?>(null) }
+    var searchFocused by remember(state) { mutableStateOf(false) }
 
     /** Positions in [AppState.filteredLines] on screen — or, mid-jump, the match being jumped to. */
     fun visiblePositions(): IntRange {
@@ -122,6 +129,27 @@ fun App(
         matchJump = scope.launch { listState.animateScrollToItem(pos) }
     }
 
+    /**
+     * Steps to the next/previous match. While the match list is still being
+     * counted — a pass over the file, seconds on a huge log — the jump waits
+     * for it, so an Enter pressed straight after Ctrl+F isn't swallowed.
+     */
+    fun navigateMatch(forward: Boolean) {
+        fun jump() = revealMatch(
+            if (forward) state.nextMatch(visiblePositions()) else state.prevMatch(visiblePositions()),
+        )
+        pendingJump?.cancel()
+        if (!state.highlightCounting) {
+            jump()
+            return
+        }
+        pendingJump = scope.launch {
+            // Bounded, so a count that never lands can't leave a poll running.
+            withTimeoutOrNull(30_000) { while (state.highlightCounting) delay(50) }
+            jump()
+        }
+    }
+
     fun onShortcut(e: KeyEvent): Boolean {
         if (e.type != KeyEventType.KeyDown) return false
         val exportEnabled = state.index != null && state.filteredLines.isNotEmpty() && !state.isBusy
@@ -131,15 +159,18 @@ fun App(
             e.isCtrlPressed && e.key == Key.C && state.lineSelection != null -> {
                 state.copySelectedLines(onCopyText); true
             }
-            e.isCtrlPressed && e.key == Key.F -> { searchFocus.requestFocus(); true }
+            // Ctrl+F searches for whatever is selected in a line, so the text
+            // doesn't have to be copied into the box by hand.
+            e.isCtrlPressed && e.key == Key.F -> { state.useSelectionAsSearch(); searchFocus.requestFocus(); true }
+            // Enter is the search box's own: elsewhere it belongs to whatever has focus.
+            searchFocused && e.key == Key.Enter -> { navigateMatch(forward = !e.isShiftPressed); true }
             e.isCtrlPressed && e.key == Key.O -> { onOpenFiles(); true }
             e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
             e.isCtrlPressed && e.key == Key.W -> { if (state.file != null) workspace.close(state); true }
             e.isCtrlPressed && e.key == Key.Tab -> { workspace.selectNext(if (e.isShiftPressed) -1 else 1); true }
             e.isCtrlPressed && e.key == Key.PageDown -> { workspace.selectNext(1); true }
             e.isCtrlPressed && e.key == Key.PageUp -> { workspace.selectNext(-1); true }
-            e.key == Key.F3 && e.isShiftPressed -> { revealMatch(state.prevMatch(visiblePositions())); true }
-            e.key == Key.F3 -> { revealMatch(state.nextMatch(visiblePositions())); true }
+            e.key == Key.F3 -> { navigateMatch(forward = !e.isShiftPressed); true }
             e.key == Key.Escape -> state.onEscape()
             else -> false
         }
@@ -164,7 +195,7 @@ fun App(
                     FilterPanel(state, Modifier.width(300.dp).fillMaxSize())
                     VerticalDivider()
                     Column(Modifier.weight(1f)) {
-                        SearchBar(state, searchFocus)
+                        SearchBar(state, searchFocus) { searchFocused = it }
                         HorizontalDivider()
                         val index = state.index
                         val provider = state.provider
@@ -423,7 +454,7 @@ private fun BarLabel(text: String) {
 }
 
 @Composable
-private fun SearchBar(state: AppState, searchFocus: FocusRequester) {
+private fun SearchBar(state: AppState, searchFocus: FocusRequester, onFocusChange: (Boolean) -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -442,7 +473,10 @@ private fun SearchBar(state: AppState, searchFocus: FocusRequester) {
             singleLine = true,
             textStyle = MaterialTheme.typography.bodySmall,
             trailingIcon = { SearchModeToggle(state) },
-            modifier = Modifier.weight(1f).focusRequester(searchFocus),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(searchFocus)
+                .onFocusChanged { onFocusChange(it.isFocused) },
         )
         Checkbox(
             checked = state.searchIsRegex,

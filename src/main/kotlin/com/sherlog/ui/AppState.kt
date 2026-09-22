@@ -345,6 +345,22 @@ class AppState(
         if (searchMode == SearchMode.FILTER) scheduleApply(500) else scheduleHighlightCount(300)
     }
 
+    /**
+     * Ctrl+F: puts the text selected inside a line into the search box, so
+     * searching for it takes no copy-and-paste. The search mode is left
+     * alone — Filter narrows the view to it, Find highlights it in place.
+     * Returns whether there was a selection to search for.
+     */
+    fun useSelectionAsSearch(): Boolean {
+        val text = selectionHighlight
+        if (text.isEmpty()) return false
+        if (text == searchText) return true
+        searchText = text
+        // A deliberate gesture rather than typing, so no debounce.
+        if (searchMode == SearchMode.FILTER) scheduleApply(0) else scheduleHighlightCount(0)
+        return true
+    }
+
     /** Flips the search box between narrowing the view and highlighting in place. */
     fun toggleSearchMode() {
         searchMode = if (searchMode == SearchMode.FILTER) SearchMode.FIND else SearchMode.FILTER

@@ -68,6 +68,8 @@
   - **Filter** — narrows the view to matching lines.
   - **Find** — highlights matches in place; ▲ ▼ arrows step through them.
 - Match count in the status bar; regex works in both modes.
+- `Ctrl+F` takes the text selected in a line into the search box (the mode is
+  left as it is); `Enter`/`Shift+Enter` there step to the nearest match.
 - Shortcuts: `Ctrl+F` search, `F3`/`Shift+F3` next/previous, `Esc` clear,
   `Ctrl+O` open, `Ctrl+E` export, `Ctrl+Tab` / `Ctrl+W` next / close tab.
 
