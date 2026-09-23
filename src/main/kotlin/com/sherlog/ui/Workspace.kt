@@ -60,6 +60,18 @@ class Workspace(private val scope: CoroutineScope) {
         if (i >= 0) activeIndex = i
     }
 
+    /**
+     * Moves the tab at [from] to [to]. The shown tab stays shown, found again
+     * by identity. Unlike [close] the list keeps its length, so [tabs] can be
+     * written before [activeIndex] without [active] ever indexing past the end.
+     */
+    fun moveTab(from: Int, to: Int) {
+        if (from == to || from !in tabs.indices || to !in tabs.indices) return
+        val shown = active
+        tabs = tabs.toMutableList().apply { add(to, removeAt(from)) }
+        activeIndex = tabs.indexOfFirst { it === shown }.coerceAtLeast(0)
+    }
+
     /** Cycles through the tabs; [step] is +1 for the next one, -1 for the previous. */
     fun selectNext(step: Int) {
         if (tabs.size > 1) activeIndex = (activeIndex + step).mod(tabs.size)

@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -25,13 +29,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 
 /**
  * How narrow a tab may get before the strip starts scrolling instead, and how
@@ -63,6 +70,10 @@ fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
             val tabWidth = (maxWidth / chips.size.coerceAtLeast(1)).coerceIn(MIN_TAB_WIDTH, MAX_TAB_WIDTH)
             val strip = rememberScrollState()
             val viewport = maxWidth
+            val widthPx = with(LocalDensity.current) { tabWidth.toPx() }
+            // Which chip is being dragged, and how far from its slot.
+            var dragging by remember { mutableStateOf<AppState?>(null) }
+            var dragOffset by remember { mutableStateOf(0f) }
             Row(Modifier.horizontalScroll(strip)) {
                 for (tab in chips) {
                     // Keyed by identity so a reorder moves the node with its
@@ -72,8 +83,27 @@ fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
                             tab,
                             width = tabWidth,
                             isActive = tab === workspace.active,
+                            isDragging = tab === dragging,
+                            dragOffset = if (tab === dragging) dragOffset else 0f,
                             onSelect = { workspace.select(tab) },
                             onClose = { workspace.close(tab) },
+                            onDragStart = { dragging = tab; dragOffset = 0f },
+                            onDrag = { delta ->
+                                dragOffset += delta
+                                // Crossed a neighbour: reorder now and keep the
+                                // chip under the pointer by dropping a slot's
+                                // worth of offset.
+                                val slots = (dragOffset / widthPx).toInt()
+                                if (slots != 0) {
+                                    val at = workspace.tabs.indexOfFirst { it === tab }
+                                    val target = (at + slots).coerceIn(0, workspace.tabs.lastIndex)
+                                    if (target != at) {
+                                        workspace.moveTab(at, target)
+                                        dragOffset -= (target - at) * widthPx
+                                    }
+                                }
+                            },
+                            onDragEnd = { dragging = null; dragOffset = 0f },
                         )
                     }
                 }
@@ -119,8 +149,13 @@ private fun FileTab(
     tab: AppState,
     width: Dp,
     isActive: Boolean,
+    isDragging: Boolean,
+    dragOffset: Float,
     onSelect: () -> Unit,
     onClose: () -> Unit,
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
 ) {
     val file = tab.file ?: return
     val accent = MaterialTheme.colorScheme.primary
@@ -130,6 +165,20 @@ private fun FileTab(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier
                 .width(width)
+                // Drawn over its neighbours while it is being dragged.
+                .zIndex(if (isDragging) 1f else 0f)
+                .graphicsLayer { translationX = dragOffset }
+                // Before clickable: a drag past the touch slop consumes the
+                // gesture, so the chip's click is cancelled, while a plain
+                // press with no movement still selects the tab.
+                .pointerInput(tab) {
+                    detectDragGestures(
+                        onDragStart = { onDragStart() },
+                        onDrag = { change, delta -> change.consume(); onDrag(delta.x) },
+                        onDragEnd = { onDragEnd() },
+                        onDragCancel = { onDragEnd() },
+                    )
+                }
                 .background(if (isActive) MaterialTheme.colorScheme.background else Color.Transparent)
                 // A bar along the top marks the active tab by more than a shade.
                 .drawBehind { if (isActive) drawRect(accent, size = Size(size.width, 2.dp.toPx())) }

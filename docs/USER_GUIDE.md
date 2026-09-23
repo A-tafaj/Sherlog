@@ -41,6 +41,8 @@ Every opened file gets its own tab across the top, as in Sublime Text:
 - Tabs shrink as more files open and the strip scrolls once they reach their
   smallest readable width; switching tabs always scrolls the active one into
   view, and **+** never scrolls away.
+- Drag a tab sideways to reorder it; the file you are looking at stays on
+  screen while the strip rearranges.
 - Click a tab to show it, **×** to close it. Hover a tab for the file's full
   path. Opening a file that's already open just shows its tab.
 
