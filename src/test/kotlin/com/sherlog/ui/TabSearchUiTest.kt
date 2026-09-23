@@ -7,6 +7,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -74,6 +75,8 @@ class TabSearchUiTest {
 
     private fun ComposeUiTest.searchAllTabs(ws: Workspace, query: String) {
         press(Key.F, ctrl = true, shift = true)
+        // The shortcut puts the cursor in the panel's box, so typing goes there.
+        onNodeWithText("Search all tabs…").assertIsFocused()
         onNodeWithText("Search all tabs…").performTextInput(query)
         waitForIdle()
         press(Key.Enter)

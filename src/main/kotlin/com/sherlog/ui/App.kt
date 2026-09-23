@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,7 +114,11 @@ fun App(
     // it can't race the root-focus effect above.
     val resultsFocus = remember { FocusRequester() }
     LaunchedEffect(workspace.search.isOpen) {
-        if (workspace.search.isOpen) runCatching { resultsFocus.requestFocus() }
+        if (!workspace.search.isOpen) return@LaunchedEffect
+        // The panel only composes on the next frame; asking before it exists
+        // throws and leaves the query box without the cursor.
+        withFrameNanos { }
+        runCatching { resultsFocus.requestFocus() }
     }
 
     /** Closing must hand focus back, or no shortcut fires afterwards. */
