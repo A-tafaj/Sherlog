@@ -24,6 +24,9 @@
   stand out.
 - Folders open up to two files at a time, so a folder of big logs doesn't
   thrash the disk. Each open file costs its own index (~25 bytes per line).
+- Tabs share the strip evenly and shrink as more open; past a readable floor
+  they stop shrinking and the strip scrolls, always keeping the active tab in
+  view. The **+** stays reachable however many files are open.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` (or `Ctrl+PgDn` / `Ctrl+PgUp`) switch tabs,
   `Ctrl+W` closes one.
 
