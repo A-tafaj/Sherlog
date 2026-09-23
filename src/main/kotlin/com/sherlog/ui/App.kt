@@ -4,6 +4,7 @@ import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -107,6 +108,20 @@ fun App(
     var pendingJump by remember(state) { mutableStateOf<Job?>(null) }
     var searchFocused by remember(state) { mutableStateOf(false) }
 
+    // The results panel's query field. Hoisted here (not remembered inside the
+    // panel, which every tab switch re-creates) and focused from one effect, so
+    // it can't race the root-focus effect above.
+    val resultsFocus = remember { FocusRequester() }
+    LaunchedEffect(workspace.search.isOpen) {
+        if (workspace.search.isOpen) runCatching { resultsFocus.requestFocus() }
+    }
+
+    /** Closing must hand focus back, or no shortcut fires afterwards. */
+    fun closeResults() {
+        workspace.search.close()
+        runCatching { rootFocus.requestFocus() }
+    }
+
     /** Positions in [AppState.filteredLines] on screen — or, mid-jump, the match being jumped to. */
     fun visiblePositions(): IntRange {
         val target = state.currentMatchPosition
@@ -160,6 +175,15 @@ fun App(
             e.isCtrlPressed && e.key == Key.C && state.lineSelection != null -> {
                 state.copySelectedLines(onCopyText); true
             }
+            // Ctrl+Shift+F searches every open tab. It must come first: the
+            // Ctrl+F branch below doesn't look at Shift and would swallow it.
+            e.isCtrlPressed && e.isShiftPressed && e.key == Key.F -> {
+                workspace.search.open(
+                    seed = state.selectionHighlight.ifEmpty { state.searchText },
+                    regex = state.searchIsRegex,
+                )
+                true
+            }
             // Ctrl+F searches for whatever is selected in a line, so the text
             // doesn't have to be copied into the box by hand.
             e.isCtrlPressed && e.key == Key.F -> { state.useSelectionAsSearch(); searchFocus.requestFocus(); true }
@@ -172,7 +196,9 @@ fun App(
             e.isCtrlPressed && e.key == Key.PageDown -> { workspace.selectNext(1); true }
             e.isCtrlPressed && e.key == Key.PageUp -> { workspace.selectNext(-1); true }
             e.key == Key.F3 -> { navigateMatch(forward = !e.isShiftPressed); true }
-            e.key == Key.Escape -> state.onEscape()
+            // The results panel is the topmost transient layer, so Esc takes it
+            // first; a second Esc peels the tab's own selection/search/highlight.
+            e.key == Key.Escape -> if (workspace.search.isOpen) { closeResults(); true } else state.onEscape()
             else -> false
         }
     }
@@ -184,6 +210,10 @@ fun App(
             .focusTarget(),
         color = MaterialTheme.colorScheme.background,
     ) {
+        // The window's height is what keeps the results panel from starving
+        // the viewer; captured here because Column shadows the receiver.
+        BoxWithConstraints {
+        val windowHeight = maxHeight
         Column {
             TabStrip(workspace, onAddFiles = onOpenFiles)
             // Keyed on the tab so UI-only state remembered below (open menus,
@@ -234,6 +264,20 @@ fun App(
                         }
                     }
                 }
+                if (workspace.search.isOpen) {
+                    // A fixed-height sibling of the weighted viewer is the very
+                    // shape that once squeezed the tag list to zero height, so
+                    // the panel is clamped against the window.
+                    PanelResizeHandle(workspace.search)
+                    SearchResultsPanel(
+                        workspace,
+                        queryFocus = resultsFocus,
+                        onClose = { closeResults() },
+                        modifier = Modifier.height(
+                            workspace.search.height.coerceIn(120.dp, windowHeight * 0.55f),
+                        ),
+                    )
+                }
                 HorizontalDivider()
                 StatusBar(
                     state,
@@ -243,6 +287,7 @@ fun App(
                     onCopyLines = { state.copySelectedLines(onCopyText) },
                 )
             }
+        }
         }
     }
 }
@@ -333,7 +378,7 @@ private fun FileTab(tab: AppState, isActive: Boolean, onSelect: () -> Unit, onCl
 }
 
 @Composable
-private fun TooltipText(text: String) {
+internal fun TooltipText(text: String) {
     Surface(color = MaterialTheme.colorScheme.inverseSurface, shape = RoundedCornerShape(4.dp)) {
         Text(
             text,
@@ -650,7 +695,7 @@ private fun StatusStat(label: String, value: Int) {
 
 /** Compact clickable glyph used for previous/next/clear selection controls. */
 @Composable
-private fun NavArrow(glyph: String, color: Color, onClick: () -> Unit) {
+internal fun NavArrow(glyph: String, color: Color, onClick: () -> Unit) {
     Text(
         glyph,
         fontSize = 13.sp,

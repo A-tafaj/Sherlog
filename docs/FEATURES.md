@@ -68,6 +68,11 @@
   - **Filter** — narrows the view to matching lines.
   - **Find** — highlights matches in place; ▲ ▼ arrows step through them.
 - Match count in the status bar; regex works in both modes.
+- `Ctrl+Shift+F` searches **every open tab** at once and lists the hits in a
+  resizable bottom panel, grouped by file, with the exact count per file
+  (previews capped at 500 a file). Clicking a hit jumps to that line in its
+  tab. Its own query box leaves each tab's filters and search untouched, and
+  each tab is searched over the lines it currently shows.
 - `Ctrl+F` takes the text selected in a line into the search box (the mode is
   left as it is); `Enter`/`Shift+Enter` there step to the nearest match.
 - Shortcuts: `Ctrl+F` search, `F3`/`Shift+F3` next/previous, `Esc` clear,

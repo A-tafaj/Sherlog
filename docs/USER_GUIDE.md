@@ -110,6 +110,23 @@ Then `Enter` jumps to the nearest match from where you are and `Shift`+`Enter`
 goes back, the same as the ▲ ▼ arrows. On a very large file the first `Enter`
 waits for the match count to finish rather than doing nothing.
 
+## Searching every open tab (`Ctrl`+`Shift`+`F`)
+
+Press `Ctrl`+`Shift`+`F` to open the results panel at the bottom. It has its
+own search box — pre-filled from whatever you had selected — so searching
+across files never touches any tab's filters or its own search box. Type and
+press `Enter`.
+
+Results are grouped by file, `alpha.txt (3,749)`, newest group appearing as
+each file finishes. Click a group's name to fold it away; click any result to
+jump to that line in its own tab. Drag the bar above the panel to resize it,
+and press `Esc` (or ✕) to close it.
+
+Each tab is searched over **the lines it currently shows**, so its filters
+still apply and every result can be jumped to. Long result lists are trimmed
+to 500 lines per file — the count beside the file name is always the true
+total. Regex works here too, though a regex result jumps without highlighting.
+
 ## Highlight occurrences of a selection
 
 Select any text inside a log line — drag-select a phrase or **double-click a
@@ -183,6 +200,7 @@ takes well under a second.
 | Key | Action |
 |-----|--------|
 | `Ctrl`+`F` | Search for the selected text, or just jump to the search box |
+| `Ctrl`+`Shift`+`F` | Search every open tab (results panel) |
 | `Enter` / `Shift`+`Enter` | In the search box: next / previous match |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the line selection, then the search, then the highlight |

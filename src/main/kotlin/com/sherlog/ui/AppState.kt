@@ -219,6 +219,34 @@ class AppState(
         }
     }
 
+    /**
+     * Brings file line [line] into view and, for a plain-substring [needle],
+     * makes it the current match the way a double-clicked occurrence does.
+     * Returns false when the line is no longer in this tab's filtered view.
+     *
+     * The scroll goes through `requestScrollToItem`, not `scrollToItem`: this
+     * is called for a tab that may not be composed yet, and the suspending one
+     * waits for that list's first layout, which never comes.
+     */
+    fun revealLine(line: Int, needle: String = ""): Boolean {
+        val position = filteredLines.binarySearch(line)
+        if (position < 0) return false
+        if (needle.isNotEmpty()) {
+            if (needle == highlightNeedle) {
+                // The matches already stand for this needle, so just point the
+                // current one at this line (or let an in-flight recount land
+                // on it — it resolves currentMatchLine at its tail).
+                currentMatchLine = line
+                currentMatchNeedle = needle
+                makeLineCurrent(line)
+            } else {
+                onViewerSelection(line, needle)
+            }
+        }
+        listState.requestScrollToItem(position)
+        return true
+    }
+
     /** Puts a one-off notice in the status bar (or the empty viewer, for a blank tab). */
     fun showStatus(message: String) {
         statusMessage = message
