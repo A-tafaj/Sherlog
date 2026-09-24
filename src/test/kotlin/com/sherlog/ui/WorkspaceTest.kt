@@ -203,6 +203,35 @@ class WorkspaceTest {
     }
 
     @Test
+    fun `moving a tab reorders the strip and keeps the shown tab shown`() {
+        val ws = Workspace(scope)
+        ws.open(listOf(a, b, c))
+        val (ta, tb, tc) = ws.tabs
+
+        ws.select(tc)
+        ws.moveTab(0, 2) // drag a to the end; c is still the one on screen
+        assertEquals(listOf(tb, tc, ta), ws.tabs)
+        assertSame(tc, ws.active)
+
+        ws.select(tb)
+        ws.moveTab(0, 1) // drag the shown tab itself
+        assertEquals(listOf(tc, tb, ta), ws.tabs)
+        assertSame(tb, ws.active)
+    }
+
+    @Test
+    fun `a move that goes nowhere is a no-op`() {
+        val ws = Workspace(scope)
+        ws.open(listOf(a, b))
+        val before = ws.tabs
+        ws.moveTab(0, 0)
+        ws.moveTab(0, 5)
+        ws.moveTab(-1, 1)
+        assertEquals(before, ws.tabs)
+        assertSame(before[0], ws.active)
+    }
+
+    @Test
     fun `export refuses a target another tab has open`() {
         val ws = Workspace(scope)
         val fileB = b

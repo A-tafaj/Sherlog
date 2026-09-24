@@ -19,6 +19,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.withKeyDown
 import java.io.File
+import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,11 +37,15 @@ class SearchFromSelectionUiTest {
         val msg = if (i % 10 == 5) "TOKEN here" else "plain text"
         "07-12 10:%02d:%02d.000  1000  1000 I FindTest: %s %03d".format(i / 60, i % 60, msg, i)
     }
-    private val logFile = File.createTempFile("searchsel", ".txt").apply { writeText(lines.joinToString("\n", postfix = "\n")) }
+    // A fixed name, not createTempFile's random one: the file name is on show
+    // in the tab and the top bar, and a random run of digits in it collides
+    // with the row lookups below.
+    private val dir: File = Files.createTempDirectory("searchsel").toFile()
+    private val logFile = File(dir, "findtest.txt").apply { writeText(lines.joinToString("\n", postfix = "\n")) }
 
     @AfterTest
     fun cleanup() {
-        logFile.delete()
+        dir.deleteRecursively()
     }
 
     private fun ComposeUiTest.launchApp(): AppState {

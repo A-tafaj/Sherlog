@@ -38,6 +38,11 @@ Every opened file gets its own tab across the top, as in Sublime Text:
   dialog); **+** at the end of the tab strip does the same.
 - **Open Folder** opens every `.txt` and `.log` file directly inside the
   chosen folder (subfolders are skipped), in name order.
+- Tabs shrink as more files open and the strip scrolls once they reach their
+  smallest readable width; switching tabs always scrolls the active one into
+  view, and **+** never scrolls away.
+- Drag a tab sideways to reorder it; the file you are looking at stays on
+  screen while the strip rearranges.
 - Click a tab to show it, **×** to close it. Hover a tab for the file's full
   path. Opening a file that's already open just shows its tab.
 
@@ -109,6 +114,23 @@ stays as it is — Filter narrows the view to it, Find highlights it in place.
 Then `Enter` jumps to the nearest match from where you are and `Shift`+`Enter`
 goes back, the same as the ▲ ▼ arrows. On a very large file the first `Enter`
 waits for the match count to finish rather than doing nothing.
+
+## Searching every open tab (`Ctrl`+`Shift`+`F`)
+
+Press `Ctrl`+`Shift`+`F` to open the results panel at the bottom. It has its
+own search box — pre-filled from whatever you had selected — so searching
+across files never touches any tab's filters or its own search box. Type and
+press `Enter`.
+
+Results are grouped by file, `alpha.txt (3,749)`, newest group appearing as
+each file finishes. Click a group's name to fold it away; click any result to
+jump to that line in its own tab. Drag the bar above the panel to resize it,
+and press `Esc` (or ✕) to close it.
+
+Each tab is searched over **the lines it currently shows**, so its filters
+still apply and every result can be jumped to. Long result lists are trimmed
+to 500 lines per file — the count beside the file name is always the true
+total. Regex works here too, though a regex result jumps without highlighting.
 
 ## Highlight occurrences of a selection
 
@@ -183,6 +205,7 @@ takes well under a second.
 | Key | Action |
 |-----|--------|
 | `Ctrl`+`F` | Search for the selected text, or just jump to the search box |
+| `Ctrl`+`Shift`+`F` | Search every open tab (results panel) |
 | `Enter` / `Shift`+`Enter` | In the search box: next / previous match |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the line selection, then the search, then the highlight |

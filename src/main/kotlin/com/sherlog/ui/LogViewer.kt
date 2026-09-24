@@ -68,7 +68,7 @@ private val levelColors = mapOf(
     LogLevel.UNKNOWN to Color(0xFFB0BEC5),
 )
 
-private val searchHighlightStyle = SpanStyle(background = Color(0x66FFEB3B), color = Color.White)
+internal val searchHighlightStyle = SpanStyle(background = Color(0x66FFEB3B), color = Color.White)
 private val selectionHighlightStyle = SpanStyle(background = Color(0x5900BCD4), color = Color.White)
 // The single occurrence-line the next/prev arrows are currently sitting on.
 private val activeSelectionHighlightStyle = SpanStyle(background = Color(0xE6FF9800), color = Color.Black)
