@@ -21,6 +21,9 @@ class Workspace(private val scope: CoroutineScope) {
     // them all at once. Two at a time keeps the disk busy without thrashing.
     private val indexing = Dispatchers.IO.limitedParallelism(2)
 
+    /** Searching every open tab at once; outlives tab switches, so it lives here. */
+    val search = TabSearch(scope)
+
     var tabs by mutableStateOf(listOf(newTab()))
         private set
     var activeIndex by mutableStateOf(0)
@@ -57,6 +60,18 @@ class Workspace(private val scope: CoroutineScope) {
         if (i >= 0) activeIndex = i
     }
 
+    /**
+     * Moves the tab at [from] to [to]. The shown tab stays shown, found again
+     * by identity. Unlike [close] the list keeps its length, so [tabs] can be
+     * written before [activeIndex] without [active] ever indexing past the end.
+     */
+    fun moveTab(from: Int, to: Int) {
+        if (from == to || from !in tabs.indices || to !in tabs.indices) return
+        val shown = active
+        tabs = tabs.toMutableList().apply { add(to, removeAt(from)) }
+        activeIndex = tabs.indexOfFirst { it === shown }.coerceAtLeast(0)
+    }
+
     /** Cycles through the tabs; [step] is +1 for the next one, -1 for the previous. */
     fun selectNext(step: Int) {
         if (tabs.size > 1) activeIndex = (activeIndex + step).mod(tabs.size)
@@ -67,6 +82,8 @@ class Workspace(private val scope: CoroutineScope) {
         val i = tabs.indexOf(tab)
         if (i < 0) return
         tab.close()
+        // Results hold their tab, and a closed tab's index is ~25 B per line.
+        search.forget(tab)
         val rest = tabs.filterIndexed { k, _ -> k != i }
         // Written before [tabs] and valid for both lists, so [active] never
         // indexes past the end in between.
@@ -76,6 +93,25 @@ class Workspace(private val scope: CoroutineScope) {
             else -> activeIndex
         }
         tabs = rest.ifEmpty { listOf(newTab()) }
+    }
+
+    /** Runs the cross-tab search over every loaded tab. */
+    fun searchAllTabs() = search.run(tabs)
+
+    /**
+     * Shows what a search result points at, in the tab it came from. Returns
+     * false when that tab was closed or its filters moved the line out of view.
+     *
+     * A regex search jumps without highlighting: the occurrence highlight is
+     * always matched as a substring, so a pattern would light up nothing.
+     */
+    fun openHit(tab: AppState, hit: TabSearch.Hit): Boolean {
+        if (tabs.none { it === tab }) return false
+        select(tab)
+        val needle = if (search.resultsAreRegex) "" else search.resultsQuery
+        val shown = tab.revealLine(hit.line, needle)
+        if (!shown) tab.showStatus("That line is no longer in this tab's filtered view.")
+        return shown
     }
 
     /**

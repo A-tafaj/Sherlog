@@ -4,6 +4,7 @@ import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -46,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,6 +109,24 @@ fun App(
     var pendingJump by remember(state) { mutableStateOf<Job?>(null) }
     var searchFocused by remember(state) { mutableStateOf(false) }
 
+    // The results panel's query field. Hoisted here (not remembered inside the
+    // panel, which every tab switch re-creates) and focused from one effect, so
+    // it can't race the root-focus effect above.
+    val resultsFocus = remember { FocusRequester() }
+    LaunchedEffect(workspace.search.isOpen) {
+        if (!workspace.search.isOpen) return@LaunchedEffect
+        // The panel only composes on the next frame; asking before it exists
+        // throws and leaves the query box without the cursor.
+        withFrameNanos { }
+        runCatching { resultsFocus.requestFocus() }
+    }
+
+    /** Closing must hand focus back, or no shortcut fires afterwards. */
+    fun closeResults() {
+        workspace.search.close()
+        runCatching { rootFocus.requestFocus() }
+    }
+
     /** Positions in [AppState.filteredLines] on screen — or, mid-jump, the match being jumped to. */
     fun visiblePositions(): IntRange {
         val target = state.currentMatchPosition
@@ -160,6 +180,15 @@ fun App(
             e.isCtrlPressed && e.key == Key.C && state.lineSelection != null -> {
                 state.copySelectedLines(onCopyText); true
             }
+            // Ctrl+Shift+F searches every open tab. It must come first: the
+            // Ctrl+F branch below doesn't look at Shift and would swallow it.
+            e.isCtrlPressed && e.isShiftPressed && e.key == Key.F -> {
+                workspace.search.open(
+                    seed = state.selectionHighlight.ifEmpty { state.searchText },
+                    regex = state.searchIsRegex,
+                )
+                true
+            }
             // Ctrl+F searches for whatever is selected in a line, so the text
             // doesn't have to be copied into the box by hand.
             e.isCtrlPressed && e.key == Key.F -> { state.useSelectionAsSearch(); searchFocus.requestFocus(); true }
@@ -172,7 +201,9 @@ fun App(
             e.isCtrlPressed && e.key == Key.PageDown -> { workspace.selectNext(1); true }
             e.isCtrlPressed && e.key == Key.PageUp -> { workspace.selectNext(-1); true }
             e.key == Key.F3 -> { navigateMatch(forward = !e.isShiftPressed); true }
-            e.key == Key.Escape -> state.onEscape()
+            // The results panel is the topmost transient layer, so Esc takes it
+            // first; a second Esc peels the tab's own selection/search/highlight.
+            e.key == Key.Escape -> if (workspace.search.isOpen) { closeResults(); true } else state.onEscape()
             else -> false
         }
     }
@@ -184,6 +215,10 @@ fun App(
             .focusTarget(),
         color = MaterialTheme.colorScheme.background,
     ) {
+        // The window's height is what keeps the results panel from starving
+        // the viewer; captured here because Column shadows the receiver.
+        BoxWithConstraints {
+        val windowHeight = maxHeight
         Column {
             TabStrip(workspace, onAddFiles = onOpenFiles)
             // Keyed on the tab so UI-only state remembered below (open menus,
@@ -234,6 +269,20 @@ fun App(
                         }
                     }
                 }
+                if (workspace.search.isOpen) {
+                    // A fixed-height sibling of the weighted viewer is the very
+                    // shape that once squeezed the tag list to zero height, so
+                    // the panel is clamped against the window.
+                    PanelResizeHandle(workspace.search)
+                    SearchResultsPanel(
+                        workspace,
+                        queryFocus = resultsFocus,
+                        onClose = { closeResults() },
+                        modifier = Modifier.height(
+                            workspace.search.height.coerceIn(120.dp, windowHeight * 0.55f),
+                        ),
+                    )
+                }
                 HorizontalDivider()
                 StatusBar(
                     state,
@@ -244,6 +293,7 @@ fun App(
                 )
             }
         }
+        }
     }
 }
 
@@ -251,89 +301,9 @@ fun App(
  * One tab per open file, Sublime-style, with + to open more. The blank tab
  * that stands in while nothing is open gets no tab of its own.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            .horizontalScroll(rememberScrollState()),
-    ) {
-        for (tab in workspace.tabs) {
-            if (tab.file == null) continue
-            FileTab(
-                tab,
-                isActive = tab === workspace.active,
-                onSelect = { workspace.select(tab) },
-                onClose = { workspace.close(tab) },
-            )
-        }
-        TooltipArea(tooltip = { TooltipText("Open files in new tabs (Ctrl+O)") }) {
-            Text(
-                "+",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable(onClick = onAddFiles)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-        }
-    }
-}
-
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun FileTab(tab: AppState, isActive: Boolean, onSelect: () -> Unit, onClose: () -> Unit) {
-    val file = tab.file ?: return
-    val accent = MaterialTheme.colorScheme.primary
-    TooltipArea(tooltip = { TooltipText(file.absolutePath) }) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .background(if (isActive) MaterialTheme.colorScheme.background else Color.Transparent)
-                // A bar along the top marks the active tab by more than a shade.
-                .drawBehind { if (isActive) drawRect(accent, size = Size(size.width, 2.dp.toPx())) }
-                .clickable(onClick = onSelect)
-                .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-        ) {
-            Text(
-                file.name,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.widthIn(max = 220.dp),
-            )
-            // With filters active each tab shows its line count, so after
-            // "Apply filters to all tabs" the files with hits stand out.
-            val badge = when {
-                tab.isLoading || tab.isBusy -> "…"
-                tab.index != null && tab.activeFilterCount > 0 -> "%,d".format(tab.filteredLines.size)
-                else -> null
-            }
-            if (badge != null) {
-                Text(badge, fontSize = 11.sp, color = accent, modifier = Modifier.padding(start = 6.dp))
-            }
-            Text(
-                "×",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .padding(start = 4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable(onClick = onClose)
-                    .padding(horizontal = 6.dp),
-            )
-        }
-    }
-}
 
 @Composable
-private fun TooltipText(text: String) {
+internal fun TooltipText(text: String) {
     Surface(color = MaterialTheme.colorScheme.inverseSurface, shape = RoundedCornerShape(4.dp)) {
         Text(
             text,
@@ -650,7 +620,7 @@ private fun StatusStat(label: String, value: Int) {
 
 /** Compact clickable glyph used for previous/next/clear selection controls. */
 @Composable
-private fun NavArrow(glyph: String, color: Color, onClick: () -> Unit) {
+internal fun NavArrow(glyph: String, color: Color, onClick: () -> Unit) {
     Text(
         glyph,
         fontSize = 13.sp,

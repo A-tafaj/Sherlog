@@ -3,11 +3,13 @@ package com.sherlog.ui
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.MouseButton
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
@@ -16,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runComposeUiTest
@@ -151,6 +154,33 @@ class TabsUiTest {
         waitForIdle()
         assertEquals(fileA, ws.active.file)
         row("alpha 120").assertIsDisplayed()
+    }
+
+    @Test
+    fun `dragging a tab past another reorders them, and a plain click still selects`() = runComposeUiTest {
+        val ws = launchWithTwoTabs()
+        val alphaChip = tab("alpha.txt").fetchSemanticsNode().boundsInRoot
+        val bravoChip = tab("bravo.txt").fetchSemanticsNode().boundsInRoot
+        assertEquals(listOf("alpha.txt", "bravo.txt"), ws.tabs.map { it.file!!.name })
+
+        // Drag alpha past bravo. The midpoint move clears the touch slop — the
+        // harness delivers one frame per injected event.
+        onRoot().performMouseInput {
+            moveTo(alphaChip.center)
+            press(MouseButton.Primary)
+            moveTo(Offset(bravoChip.center.x, alphaChip.center.y))
+            moveTo(Offset(bravoChip.right, alphaChip.center.y))
+            release()
+        }
+        waitForIdle()
+
+        assertEquals(listOf("bravo.txt", "alpha.txt"), ws.tabs.map { it.file!!.name })
+        assertEquals(fileA, ws.active.file) // dragging doesn't change which tab is shown
+
+        // A press with no movement is still a click.
+        tab("bravo.txt").performClick()
+        waitForIdle()
+        assertEquals(fileB, ws.active.file)
     }
 
     @Test
