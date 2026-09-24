@@ -5,13 +5,13 @@ far too big for a text editor, then filter it down by tag, PID, level, time and
 text instead of grinding through `findstr` and regex passes by hand.
 Kotlin + Compose Desktop.
 
-![Sherlog with three logs in tabs, filtering a 1.5-million-line logcat down to 18,565 lines](docs/images/screenshot.png)
+![Sherlog with three logs in tabs, searching all of them for CMD_ENABLE_RSSI_POLL](docs/images/screenshot.png)
 
-A 1,555,005-line dump narrowed to **18,565 lines** by five tags and a time
-range. Find mode highlights every `NetWorkUtils` and counts them
-(*5,446 lines contain "NetWorkUtils"*, bottom right); ▲ ▼ step through them,
-the current one in amber. Three logs are open in tabs, each showing how many
-lines its filters keep.
+A 1,010,986-line dump narrowed to **2,104 lines** by muted tags, a time range
+and an `rssi` search, with every `lastModified` in view highlighted and counted
+(*1,942 lines*, bottom right). `CMD_ENABLE_RSSI_POLL` is searched across all
+three open logs at once — **905 matches**, grouped by file in the panel below;
+clicking one jumps to that line in its own tab.
 
 Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
 [Why this tool](docs/WHY_THIS_TOOL.md).
@@ -67,11 +67,14 @@ takes about a minute — see [Run](#run) below.
   exclude-substrings, keep-substrings. All combinable. Tags and PIDs each
   toggle between **show-only** and **hide**.
 - Search: case-insensitive, optional regex, highlighted matches, match count.
+- **Find in all files** — `Ctrl+Shift+F` searches every open tab and lists the
+  hits grouped by file; click one to jump to it.
 - Debug presets: Network / Crash / Video — **combinable**, so Crash + Network
   shows both at once.
 - Export the filtered view to a new `.txt`/`.log` file (streaming).
 - **Tabs**, Sublime-style: open several files (or a whole folder) at once,
   each with its own filters, and apply one tab's filters to all of them.
+  Tabs shrink to fit, scroll when they can't, and can be dragged to reorder.
 - All heavy work runs on background coroutines with progress + cancel.
 
 ## Roadmap
