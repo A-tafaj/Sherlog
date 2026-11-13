@@ -321,6 +321,13 @@ class AppState(
         }
     }
 
+    /** Ctrl+A: every line in the view (the filtered lines, not the whole file). */
+    fun selectAllLines() {
+        if (filteredLines.isEmpty()) return
+        selectionAnchor = 0
+        selectLines(0, filteredLines.size - 1)
+    }
+
     /** Shift+click on the line at [pos]: selects from the line pressed last. */
     fun extendLineSelection(pos: Int) = selectLines(if (selectionAnchor >= 0) selectionAnchor else pos, pos)
 

@@ -16,7 +16,11 @@ import java.io.File
  * Each tab keeps its own filters; [applyFiltersToAll] copies the active tab's
  * onto the others.
  */
-class Workspace(private val scope: CoroutineScope) {
+class Workspace(
+    private val scope: CoroutineScope,
+    /** Layout and zoom, shared by every tab. */
+    val prefs: UiPrefs = UiPrefs(),
+) {
 
     // Indexing is disk-bound: opening a folder of big logs shouldn't read
     // them all at once. Two at a time keeps the disk busy without thrashing.

@@ -72,6 +72,7 @@ takes about a minute — see [Run](#run) below.
 - Debug presets: Network / Crash / Video — **combinable**, so Crash + Network
   shows both at once.
 - Export the filtered view to a new `.txt`/`.log` file (streaming).
+- Zoom the log text and fold the filter panel away (`Ctrl+B`) for more room.
 - **Tabs**, Sublime-style: open several files (or a whole folder) at once,
   each with its own filters, and apply one tab's filters to all of them.
   Tabs shrink to fit, scroll when they can't, and can be dragged to reorder.
