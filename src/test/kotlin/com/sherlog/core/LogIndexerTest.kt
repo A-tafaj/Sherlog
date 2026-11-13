@@ -106,6 +106,37 @@ class LogIndexerTest {
     }
 
     @Test
+    fun `indexes a logcat -v usec capture with empty-tag driver lines`() = runBlocking {
+        // Shape of a real capture that used to parse 0 of 252,120 lines.
+        val file = logFile(
+            "--------- switch to main\n" +
+                "09-21 08:29:41.227589   483   483 W         : [dhd] CFG80211-ERROR) scan busy\n" +
+                "09-21 08:29:41.230102  1550  1611 I WifiService: startScan\n" +
+                "--------- switch to kernel\n" +
+                "09-21 08:29:41.231000   483   483 W         : [dhd] scan abort\n",
+        )
+        val index = LogIndexer.index(file)
+        assertEquals(5, index.lineCount)
+        assertEquals(2, index.warningCount)
+        assertEquals(listOf("", "WifiService"), index.tags.toList())
+        assertEquals(2, index.tagCounts[index.tags.indexOf("")])
+        assertEquals(483, index.pids[1])
+        // Only the "switch to" markers stay unparsed.
+        assertEquals(LogLevel.UNKNOWN, index.level(0))
+        assertEquals(LogLevel.UNKNOWN, index.level(3))
+        assertEquals(LogLevel.WARN, index.level(4))
+        // The leading marker is backfilled with the first real timestamp.
+        assertEquals(index.timestamps[1], index.timestamps[0])
+        assertEquals(
+            com.sherlog.filter.FilterEngine.apply(
+                index,
+                com.sherlog.filter.FilterState(selectedTags = setOf("")),
+            ).toList(),
+            listOf(1, 4),
+        )
+    }
+
+    @Test
     fun `indexes year-prefixed format`() = runBlocking {
         val file = logFile(
             "2026-07-14 14:27:36.530 22886 46555 I WifiService: \"Interfaces\": [{\n" +

@@ -10,7 +10,9 @@ import com.sherlog.model.LogLevel
  * 2026-07-14 14:27:36.530 22886 46555 I WifiService: message text
  * ```
  *
- * The year-prefixed variant is what some cached-log dumps use.
+ * The year-prefixed variant is what some cached-log dumps use. Either one
+ * may carry microseconds or nanoseconds (`logcat -v usec` / `-v nsec`, e.g.
+ * `09-21 08:29:41.227589`); those are truncated to milliseconds.
  *
  * Timestamps are stored as milliseconds since 2000-01-01 with real calendar
  * math. Lines WITHOUT a year are interpreted as year 2000 (a leap year, so
@@ -80,12 +82,18 @@ object LogcatLineParser {
         if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60) return false
         val ms = digits3(line, o + 15)
         if (ms < 0) return false
+        // `logcat -v usec` / `-v nsec` print 6 or 9 fraction digits. The
+        // index keeps milliseconds, so the extra digits are skipped.
+        val fractionEnd = endOfDigits(line, o + 18)
+        when (fractionEnd - (o + 15)) {
+            3, 6, 9 -> Unit
+            else -> return false
+        }
 
         val days = daysSince2000(year) + daysBeforeMonth(year)[month - 1] + (day - 1)
         out.timestampMs = days * MS_PER_DAY + (((hour * 60L + minute) * 60 + second) * 1000) + ms
 
-        var i = o + 18
-        i = skipSpaces(line, i)
+        var i = skipSpaces(line, fractionEnd)
         val pidEnd = endOfDigits(line, i)
         if (pidEnd == i) return false
         out.pid = line.substring(i, pidEnd).toInt()
@@ -104,11 +112,12 @@ object LogcatLineParser {
 
         i = skipSpaces(line, i + 1)
         // Tag runs until the first ':'. Some tags contain spaces, so do not
-        // stop at whitespace; trim trailing padding instead.
+        // stop at whitespace; trim trailing padding instead. The tag can be
+        // empty: kernel/driver lines such as `W         : [dhd] ...` have
+        // nothing before the colon, and are still real log lines.
         val colon = line.indexOf(':', i)
-        if (colon <= i) return false
+        if (colon < 0) return false
         out.tag = line.substring(i, colon).trimEnd()
-        if (out.tag.isEmpty()) return false
         return true
     }
 

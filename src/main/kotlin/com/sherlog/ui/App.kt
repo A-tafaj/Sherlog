@@ -537,7 +537,30 @@ private fun StatusBar(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     ) { Text("Cancel", fontSize = 11.sp) }
                 } else {
-                    Text(state.statusMessage, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        state.statusMessage,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    val notice = state.notice
+                    if (notice != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false),
+                        ) {
+                            Text(
+                                notice,
+                                fontSize = 11.sp,
+                                color = NoticeColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            NavArrow("✕", MaterialTheme.colorScheme.onSurfaceVariant) { state.dismissNotice() }
+                        }
+                    }
                 }
             }
 
@@ -609,6 +632,9 @@ private fun StatusBar(
         }
     }
 }
+
+/** Status-bar notices share the Warn line colour: worth noticing, not an error. */
+private val NoticeColor = Color(0xFFFFB74D)
 
 @Composable
 private fun StatusStat(label: String, value: Int) {

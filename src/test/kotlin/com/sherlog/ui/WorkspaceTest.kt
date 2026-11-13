@@ -72,26 +72,68 @@ class WorkspaceTest {
         assertEquals(fileA, ws.active.file)
     }
 
+    private fun binary(name: String): File =
+        File(dir, name).apply { writeBytes(kotlin.random.Random(1).nextBytes(4096)) }
+
     @Test
-    fun `open folder takes only the txt and log files directly inside it, by name`() {
+    fun `open folder takes the text files directly inside it whatever their extension, by name`() {
         log("b.log", "x")
         log("A.TXT", "x")
-        log("notes.json", "x")
-        log("logcat.log.1", "x")
+        log("logcat.09", line("10:00:00", 'I', "OkHttp", "rotated"))
+        log("logcat", "x")
         log("sub/d.txt", "x")
+        log(".hidden_notes", "x")
         val ws = Workspace(scope)
         ws.openFolder(dir)
-        assertEquals(listOf("A.TXT", "b.log"), ws.tabs.map { it.file!!.name })
+        assertEquals(listOf("A.TXT", "b.log", "logcat", "logcat.09"), ws.tabs.map { it.file!!.name })
+        assertFalse(ws.tabs.any { "Skipped" in it.notice.orEmpty() }) // nothing here was binary
     }
 
     @Test
-    fun `a folder without log files opens nothing and says so`() {
-        log("notes.json", "x")
+    fun `open folder skips binaries and names them on the first tab`() {
+        log("logcat.01", line("10:00:00", 'I', "OkHttp", "x"))
+        binary("bugreport.zip")
+        binary("screen.png")
+        val ws = Workspace(scope)
+        ws.openFolder(dir)
+        assertEquals(listOf("logcat.01"), ws.tabs.map { it.file!!.name })
+        assertEquals("Skipped 2 files that aren't text: bugreport.zip, screen.png", ws.active.notice)
+        ws.awaitLoaded()
+        // Loading the file doesn't wipe the notice; dismissing it does.
+        assertEquals("Skipped 2 files that aren't text: bugreport.zip, screen.png", ws.active.notice)
+        ws.active.dismissNotice()
+        assertNull(ws.active.notice)
+    }
+
+    @Test
+    fun `a folder with only binaries opens nothing and says so`() {
+        binary("bugreport.zip")
         val ws = Workspace(scope)
         ws.openFolder(dir)
         assertEquals(1, ws.tabs.size)
         assertNull(ws.active.file)
-        assertTrue("No .txt or .log files" in ws.active.statusMessage, ws.active.statusMessage)
+        assertEquals("Nothing opened — not a text file: bugreport.zip", ws.active.statusMessage)
+    }
+
+    @Test
+    fun `an empty folder says so`() {
+        val ws = Workspace(scope)
+        ws.openFolder(dir)
+        assertNull(ws.active.file)
+        assertTrue("has no files" in ws.active.statusMessage, ws.active.statusMessage)
+    }
+
+    @Test
+    fun `a text file with no logcat lines opens with a plain-text notice`() {
+        val ws = Workspace(scope)
+        ws.open(listOf(log("notes", "just some notes", "nothing logcat about them")))
+        ws.awaitLoaded()
+        assertEquals(2, ws.active.index!!.lineCount)
+        assertEquals("No logcat lines found — showing it as plain text", ws.active.notice)
+        // A real log in the same tab clears it.
+        ws.active.openFile(a)
+        ws.awaitLoaded()
+        assertNull(ws.active.notice)
     }
 
     @Test

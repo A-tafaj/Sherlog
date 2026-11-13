@@ -129,6 +129,61 @@ class LogcatLineParserTest {
     }
 
     @Test
+    fun `parses microsecond timestamps from logcat -v usec`() {
+        val r = parse("09-21 08:29:41.227589   483   483 I wlan: scan done")
+        assertNotNull(r)
+        assertEquals(483, r.pid)
+        assertEquals(483, r.tid)
+        assertEquals(LogLevel.INFO, r.level)
+        assertEquals("wlan", r.tag)
+        // Truncated to the millisecond, same value as the 3-digit form.
+        assertEquals(parse("09-21 08:29:41.227   483   483 I wlan: scan done")!!.timestampMs, r.timestampMs)
+    }
+
+    @Test
+    fun `parses nanosecond timestamps with and without a year`() {
+        val noYear = parse("09-21 08:29:41.227589123   483   483 D wlan: x")
+        assertNotNull(noYear)
+        assertEquals("09-21 08:29:41.227", LogcatLineParser.formatTimestamp(noYear.timestampMs))
+        val withYear = parse("2026-09-21 08:29:41.227589123   483   483 D wlan: x")
+        assertNotNull(withYear)
+        assertEquals("2026-09-21 08:29:41.227", LogcatLineParser.formatTimestamp(withYear.timestampMs))
+    }
+
+    @Test
+    fun `rejects fraction digit counts logcat never prints`() {
+        assertNull(parse("09-21 08:29:41.2275   483   483 I wlan: x"))
+        assertNull(parse("09-21 08:29:41.22758   483   483 I wlan: x"))
+        assertNull(parse("09-21 08:29:41.2275891   483   483 I wlan: x"))
+    }
+
+    @Test
+    fun `parseTimestamp accepts microsecond input`() {
+        assertEquals(
+            LogcatLineParser.parseTimestamp("09-21 08:29:41.227"),
+            LogcatLineParser.parseTimestamp("09-21 08:29:41.227589"),
+        )
+    }
+
+    @Test
+    fun `parses lines with an empty tag`() {
+        // Kernel/driver lines (here the Broadcom dhd driver) print nothing before the colon.
+        val r = parse("09-21 08:29:41.227589   483   483 W         : [dhd] CFG80211-ERROR) wl_cfg80211_scan : scan busy")
+        assertNotNull(r)
+        assertEquals("", r.tag)
+        assertEquals(LogLevel.WARN, r.level)
+        assertEquals(483, r.pid)
+        val tight = parse("07-12 14:10:16.620  6432 27697 E : x")
+        assertNotNull(tight)
+        assertEquals("", tight.tag)
+    }
+
+    @Test
+    fun `still rejects lines with no colon after the level`() {
+        assertNull(parse("07-12 14:10:16.620  6432 27697 E no colon anywhere in this line"))
+    }
+
+    @Test
     fun `leap year day boundaries stay ordered`() {
         val feb29 = LogcatLineParser.parseTimestamp("02-29 23:59:59")!!
         val mar01 = LogcatLineParser.parseTimestamp("03-01 00:00:00")!!

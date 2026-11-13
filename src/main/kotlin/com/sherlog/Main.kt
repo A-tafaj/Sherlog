@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.sherlog.core.LogFiles
 import com.sherlog.ui.App
 import com.sherlog.ui.Workspace
 import java.awt.Component
@@ -23,6 +24,7 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import javax.swing.JFileChooser
+import javax.swing.JOptionPane
 import javax.swing.UIManager
 
 fun main() = application {
@@ -57,15 +59,11 @@ fun main() = application {
                         chooseFolder(window, start)?.let(workspace::openFolder)
                     },
                     onExportClick = {
-                        val dialog = FileDialog(window, "Export Filtered Logs", FileDialog.SAVE)
                         // Default to a name derived from the source so a re-export
                         // doesn't collide with the file currently open.
-                        dialog.file = workspace.active.index?.file?.nameWithoutExtension
-                            ?.let { "${it}_filtered.txt" } ?: "cleaned_logcat.txt"
-                        dialog.isVisible = true
-                        val dir = dialog.directory
-                        val name = dialog.file
-                        if (dir != null && name != null) workspace.exportActive(File(dir, name))
+                        val suggested = LogFiles.exportName(workspace.active.index?.file)
+                        chooseTextFileToSave(window, "Export Filtered Logs", suggested)
+                            ?.let(workspace::exportActive)
                     },
                     onCopyText = { text ->
                         // Arrives from a worker thread (the lines are read off
@@ -80,13 +78,45 @@ fun main() = application {
     }
 }
 
-/** The native file picker, allowing several files at once. */
+/**
+ * The native file picker, allowing several files at once. It lists every
+ * file: rotated logs (`logcat.01`) have no `.txt`/`.log`, and
+ * [Workspace.open] turns binaries away itself.
+ */
 private fun chooseLogFiles(parent: Frame): List<File> {
     val dialog = FileDialog(parent, "Open Log Files", FileDialog.LOAD)
-    dialog.file = "*.txt;*.log"
     dialog.isMultipleMode = true
     dialog.isVisible = true
     return dialog.files.toList()
+}
+
+/**
+ * The native save dialog, for a text file. Windows' AWT dialog only offers
+ * "All Files", so a name typed without an extension would be saved without
+ * one; [LogFiles.withTextExtension] adds `.txt`. The dialog asked about
+ * replacing the name as typed, not the one with `.txt` added, so that one
+ * is confirmed here.
+ */
+private fun chooseTextFileToSave(parent: Frame, title: String, suggestedName: String): File? {
+    val dialog = FileDialog(parent, title, FileDialog.SAVE)
+    dialog.file = suggestedName
+    dialog.isVisible = true
+    val dir = dialog.directory ?: return null
+    val name = dialog.file ?: return null
+    val chosen = File(dir, name)
+    val target = LogFiles.withTextExtension(chosen)
+    if (target != chosen && target.exists()) {
+        useSystemLookAndFeel()
+        val answer = JOptionPane.showConfirmDialog(
+            parent,
+            "${target.name} already exists.\nDo you want to replace it?",
+            title,
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE,
+        )
+        if (answer != JOptionPane.YES_OPTION) return null
+    }
+    return target
 }
 
 /**
@@ -94,10 +124,15 @@ private fun chooseLogFiles(parent: Frame): List<File> {
  * is Swing's — given the system look, so it doesn't stand out as foreign.
  */
 private fun chooseFolder(parent: Component, start: File?): File? {
-    runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
+    useSystemLookAndFeel()
     val chooser = JFileChooser(start).apply {
         dialogTitle = "Open Folder"
         fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
     }
     return if (chooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
+}
+
+/** Swing dialogs (folder picker, confirmations) in the system look, so they don't stand out as foreign. */
+private fun useSystemLookAndFeel() {
+    runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
 }
