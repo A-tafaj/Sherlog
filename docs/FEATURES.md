@@ -83,7 +83,9 @@
 - `Ctrl+F` takes the text selected in a line into the search box (the mode is
   left as it is); `Enter`/`Shift+Enter` there step to the nearest match.
 - Shortcuts: `Ctrl+F` search, `F3`/`Shift+F3` next/previous, `Esc` clear,
-  `Ctrl+O` open, `Ctrl+E` export, `Ctrl+Tab` / `Ctrl+W` next / close tab.
+  `Ctrl+O` open, `Ctrl+E` export, `Ctrl+Tab` / `Ctrl+W` next / close tab,
+  `Ctrl+A` select all lines, `Ctrl++` / `Ctrl+-` / `Ctrl+0` (or `Ctrl`+wheel) zoom,
+  `Ctrl+B` hide / show filters.
 
 ## Selection highlighting
 - Select text in any log line (drag or double-click a word): all occurrences
@@ -128,6 +130,7 @@
 
 ## Viewer
 - Severity coloring (red/pink/orange/green/blue/gray) + row tint for E/W.
+- Zoomable log text and a collapsible, resizable filter panel, both remembered.
 - Monospace, lazy rendering — only visible lines are read from disk (64 KB
   block LRU cache; ~11 ms for 500 random reads).
 - White semi-transparent scrollbars, visible on the dark theme.

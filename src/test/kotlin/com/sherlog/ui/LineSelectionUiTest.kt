@@ -143,6 +143,49 @@ class LineSelectionUiTest {
         assertTrue(sel.last > lastVisible + 5, "selection stopped at ${sel.last}; the screen ended at $lastVisible")
     }
 
+    private fun ComposeUiTest.ctrl(key: Key) {
+        onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(key) } }
+        waitForIdle()
+    }
+
+    @Test
+    fun `ctrl+a selects every line in the view, and ctrl+c copies them all`() = runComposeUiTest {
+        val state = launchApp()
+        ctrl(Key.A)
+        assertEquals(0..299, state.lineSelection)
+        onNodeWithText("300 lines selected").assertExists()
+        ctrl(Key.C)
+        assertEquals(expected(0..299), awaitCopy())
+    }
+
+    @Test
+    fun `ctrl+a after clicking a row selects the lines, not just that row's text`() = runComposeUiTest {
+        val state = launchApp()
+        onRoot().performMouseInput { click(rowCenter(5)) }
+        waitForIdle()
+        ctrl(Key.A)
+        assertEquals(0..299, state.lineSelection)
+    }
+
+    @Test
+    fun `ctrl+a takes only the lines the filters left`() = runComposeUiTest {
+        val state = launchApp()
+        runOnIdle { state.searchText = "line 01"; state.onSearchChanged() }
+        waitUntil(timeoutMillis = 10_000) { state.filteredLines.size == 10 && !state.isBusy }
+        onRoot().performMouseInput { click(rowCenter(12)) }
+        waitForIdle()
+        ctrl(Key.A)
+        assertEquals(0..9, state.lineSelection)
+    }
+
+    @Test
+    fun `ctrl+a in the search box stays the search box's own`() = runComposeUiTest {
+        val state = launchApp()
+        ctrl(Key.F) // puts the cursor in the search box
+        ctrl(Key.A)
+        assertNull(state.lineSelection)
+    }
+
     @Test
     fun `the status bar and the right-click menu copy the selection too`() = runComposeUiTest {
         val state = launchApp()

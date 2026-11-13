@@ -31,7 +31,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -94,6 +102,9 @@ fun LogViewer(
     onSelectLines: (from: Int, to: Int) -> Unit,
     onExtendLineSelection: (pos: Int) -> Unit,
     onCopyLines: () -> Unit,
+    onSelectAll: () -> Unit,
+    textScale: Float,
+    onZoom: (steps: Int) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
@@ -112,8 +123,21 @@ fun LogViewer(
     val pressed = rememberUpdatedState(onLinePressed)
     val selected = rememberUpdatedState(onSelectLines)
     val extended = rememberUpdatedState(onExtendLineSelection)
+    val zoom = rememberUpdatedState(onZoom)
 
-    Box(modifier) {
+    // A clicked row is a text field, whose own Ctrl+A would select just that
+    // one line's text. In here, Ctrl+A means every line in the view. This sees
+    // keys only while focus is inside the viewer, so the search box and the
+    // filter fields keep their own Ctrl+A.
+    Box(
+        modifier
+            .onPreviewKeyEvent {
+                val selectAll = it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key == Key.A
+                if (selectAll) onSelectAll()
+                selectAll
+            }
+            .ctrlWheelZoom { zoom.value(it) },
+    ) {
         // Right-clicking offers the whole line selection next to the text
         // field's own Copy, which only knows about its own line.
         ContextMenuDataProvider(
@@ -141,6 +165,7 @@ fun LogViewer(
                         index, provider, lineIndex, searchMatcher, highlightMatcher,
                         isCurrentMatch = pos == currentMatchPosition,
                         isSelected = lineSelection?.contains(pos) == true,
+                        textScale = textScale,
                         onSelectionChange = onSelectionChange,
                     )
                 }
@@ -150,6 +175,30 @@ fun LogViewer(
             adapter = rememberScrollbarAdapter(listState),
             modifier = Modifier.align(Alignment.CenterEnd),
         )
+    }
+}
+
+/**
+ * Ctrl+wheel zooms instead of scrolling. Watched in the Initial pass, ahead of
+ * the list, which would otherwise scroll. A mouse notch is one step; a
+ * trackpad pinch (which Windows sends as Ctrl+wheel in small fractions) adds
+ * up to one before it counts, or it would race through every size.
+ */
+private fun Modifier.ctrlWheelZoom(onZoom: (steps: Int) -> Unit): Modifier = pointerInput(Unit) {
+    var pending = 0f
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.type != PointerEventType.Scroll || !event.keyboardModifiers.isCtrlPressed) continue
+            event.changes.forEach { it.consume() }
+            // Wheel up (negative) is bigger, as in browsers and editors.
+            pending -= event.changes.sumOf { it.scrollDelta.y.toDouble() }.toFloat()
+            val steps = pending.toInt()
+            if (steps != 0) {
+                pending -= steps
+                onZoom(steps)
+            }
+        }
     }
 }
 
@@ -269,6 +318,7 @@ private fun LogRow(
     highlightMatcher: FilterEngine.SearchMatcher?,
     isCurrentMatch: Boolean,
     isSelected: Boolean,
+    textScale: Float,
     onSelectionChange: (lineIndex: Int, text: String) -> Unit,
 ) {
     // A line whose bytes are already cached is resolved during composition, so
@@ -322,8 +372,8 @@ private fun LogRow(
         textStyle = TextStyle(
             color = color,
             fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
+            fontSize = (12 * textScale).sp,
+            lineHeight = (16 * textScale).sp,
         ),
         cursorBrush = SolidColor(color),
         visualTransformation = transformation,

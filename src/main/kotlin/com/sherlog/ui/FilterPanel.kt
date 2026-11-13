@@ -1,5 +1,7 @@
 package com.sherlog.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,11 +46,18 @@ import com.sherlog.parser.LogcatLineParser
  */
 internal fun tagLabel(tag: String): String = tag.ifEmpty { "(no tag)" }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
+fun FilterPanel(state: AppState, onCollapse: () -> Unit, modifier: Modifier = Modifier) {
     val index = state.index
     Column(modifier.padding(8.dp)) {
-        SectionTitle("Tags")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionTitle("Tags")
+            Spacer(Modifier.weight(1f))
+            TooltipArea(tooltip = { TooltipText("Hide filters (Ctrl+B)") }) {
+                NavArrow("«", MaterialTheme.colorScheme.onSurfaceVariant, onCollapse)
+            }
+        }
         OutlinedTextField(
             value = state.tagSearchText,
             onValueChange = { state.tagSearchText = it },

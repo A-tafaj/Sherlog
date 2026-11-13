@@ -15,6 +15,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.sherlog.core.LogFiles
 import com.sherlog.ui.App
+import com.sherlog.ui.UiPrefs
 import com.sherlog.ui.Workspace
 import java.awt.Component
 import java.awt.EventQueue
@@ -38,7 +39,7 @@ fun main() = application {
         state = rememberWindowState(width = 1400.dp, height = 900.dp),
     ) {
         val scope = rememberCoroutineScope()
-        val workspace = remember { Workspace(scope) }
+        val workspace = remember { Workspace(scope, UiPrefs.persistent()) }
         // The default scrollbar blends into the dark theme, so it is lightened
         // — but kept restrained, since it sits beside dense log text and is
         // the only hint that a region scrolls at all.

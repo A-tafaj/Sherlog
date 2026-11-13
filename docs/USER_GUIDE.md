@@ -67,6 +67,8 @@ files have hits. The button waits while files are still loading.
 
 ## Filtering (left panel — everything applies automatically as you change it)
 
+Hide the panel with **«** or `Ctrl`+`B` for more log room; drag its edge to resize it.
+
 **Tags**
 - The list shows every tag with its line count. Type in *Search tags* to
   narrow the list; click the sort label to switch between count and A–Z.
@@ -214,6 +216,9 @@ takes well under a second.
 | `Ctrl`+`E` | Export Filtered |
 | `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | Next / previous tab (also `Ctrl`+`PgDn` / `PgUp`) |
 | `Ctrl`+`W` | Close the tab |
+| `Ctrl`+`A` | Select all lines in the view |
+| `Ctrl`+`B` | Hide / show the filter panel |
+| `Ctrl`+`+` / `Ctrl`+`-` / `Ctrl`+`0` | Zoom the log text in / out / reset (also `Ctrl`+wheel) |
 | `Ctrl`+`C` | Copy the selected lines, or the text selected within a line |
 
 ## Tips

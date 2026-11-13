@@ -108,6 +108,18 @@ fun App(
     // box has focus (Enter only navigates from there).
     var pendingJump by remember(state) { mutableStateOf<Job?>(null) }
     var searchFocused by remember(state) { mutableStateOf(false) }
+    // Whether the root itself holds focus (nothing clicked yet, or just after
+    // a tab switch), as opposed to a field or row inside it.
+    var rootFocused by remember { mutableStateOf(false) }
+    // Whether focus is anywhere in the window at all.
+    var focusInside by remember { mutableStateOf(false) }
+
+    // Folding the filter panel away disposes a field that may hold focus, and
+    // with nothing focused no shortcut fires (not even Ctrl+B to undo it).
+    LaunchedEffect(workspace.prefs.filterPanelCollapsed) {
+        withFrameNanos { }
+        if (!focusInside) runCatching { rootFocus.requestFocus() }
+    }
 
     // The results panel's query field. Hoisted here (not remembered inside the
     // panel, which every tab switch re-creates) and focused from one effect, so
@@ -180,6 +192,14 @@ fun App(
             e.isCtrlPressed && e.key == Key.C && state.lineSelection != null -> {
                 state.copySelectedLines(onCopyText); true
             }
+            // Only while no field has focus: in a text box, Ctrl+A is the box's.
+            // From a clicked row, the viewer takes it (LogViewer).
+            rootFocused && e.isCtrlPressed && e.key == Key.A -> { state.selectAllLines(); true }
+            // Log text zoom, for every tab. Ctrl+= is Ctrl++ without Shift.
+            e.isCtrlPressed && e.key in ZoomInKeys -> { workspace.prefs.zoom(1); true }
+            e.isCtrlPressed && e.key in ZoomOutKeys -> { workspace.prefs.zoom(-1); true }
+            e.isCtrlPressed && e.key in ZoomResetKeys -> { workspace.prefs.resetZoom(); true }
+            e.isCtrlPressed && e.key == Key.B -> { workspace.prefs.toggleFilterPanel(); true }
             // Ctrl+Shift+F searches every open tab. It must come first: the
             // Ctrl+F branch below doesn't look at Shift and would swallow it.
             e.isCtrlPressed && e.isShiftPressed && e.key == Key.F -> {
@@ -211,6 +231,10 @@ fun App(
     Surface(
         Modifier.fillMaxSize()
             .focusRequester(rootFocus)
+            .onFocusChanged {
+                rootFocused = it.isFocused
+                focusInside = it.hasFocus
+            }
             .onPreviewKeyEvent(::onShortcut)
             .focusTarget(),
         color = MaterialTheme.colorScheme.background,
@@ -219,6 +243,7 @@ fun App(
         // the viewer; captured here because Column shadows the receiver.
         BoxWithConstraints {
         val windowHeight = maxHeight
+        val windowWidth = maxWidth
         Column {
             TabStrip(workspace, onAddFiles = onOpenFiles)
             // Keyed on the tab so UI-only state remembered below (open menus,
@@ -228,8 +253,8 @@ fun App(
                 TopBar(workspace, onOpenFiles, onOpenFolder, onExportClick)
                 HorizontalDivider()
                 Row(Modifier.weight(1f)) {
-                    FilterPanel(state, Modifier.width(300.dp).fillMaxSize())
-                    VerticalDivider()
+                    // Never more than ~half the window, so the log keeps the room.
+                    FilterSidePanel(state, workspace.prefs, maxWidth = windowWidth * 0.45f)
                     Column(Modifier.weight(1f)) {
                         SearchBar(state, searchFocus) { searchFocused = it }
                         HorizontalDivider()
@@ -263,6 +288,9 @@ fun App(
                                 onSelectLines = { from, to -> state.selectLines(from, to) },
                                 onExtendLineSelection = { state.extendLineSelection(it) },
                                 onCopyLines = { state.copySelectedLines(onCopyText) },
+                                onSelectAll = { state.selectAllLines() },
+                                textScale = workspace.prefs.textScale,
+                                onZoom = { workspace.prefs.zoom(it) },
                                 listState = listState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
@@ -286,6 +314,7 @@ fun App(
                 HorizontalDivider()
                 StatusBar(
                     state,
+                    workspace.prefs,
                     onPrevMatch = { revealMatch(state.prevMatch(visiblePositions())) },
                     onNextMatch = { revealMatch(state.nextMatch(visiblePositions())) },
                     onClearMatch = { state.clearHighlight() },
@@ -506,9 +535,11 @@ private fun SearchModeToggle(state: AppState) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun StatusBar(
     state: AppState,
+    prefs: UiPrefs,
     onPrevMatch: () -> Unit,
     onNextMatch: () -> Unit,
     onClearMatch: () -> Unit,
@@ -628,6 +659,20 @@ private fun StatusBar(
                         Text(highlightText, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                     }
                 }
+                // Only while zoomed, so it explains big or tiny text; a click resets.
+                if (prefs.zoomPercent != 100) {
+                    TooltipArea(tooltip = { TooltipText("Reset zoom (Ctrl+0)") }) {
+                        Text(
+                            "Zoom ${prefs.zoomPercent}%",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { prefs.resetZoom() }
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -635,6 +680,10 @@ private fun StatusBar(
 
 /** Status-bar notices share the Warn line colour: worth noticing, not an error. */
 private val NoticeColor = Color(0xFFFFB74D)
+
+private val ZoomInKeys = setOf(Key.Equals, Key.Plus, Key.NumPadAdd)
+private val ZoomOutKeys = setOf(Key.Minus, Key.NumPadSubtract)
+private val ZoomResetKeys = setOf(Key.Zero, Key.NumPad0)
 
 @Composable
 private fun StatusStat(label: String, value: Int) {
