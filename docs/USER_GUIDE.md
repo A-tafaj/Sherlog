@@ -15,10 +15,10 @@ Or build a Windows installer once and use it from the Start menu:
 
 ## Opening a log
 
-Click **Open Log** (top-left) and pick a `.txt` or `.log` logcat dump —
-both classic logcat timestamps (`07-12 14:10:14.880`) and cached logs
+Click **Open Log** (top-left) and pick a logcat dump (`.txt`, `.log`, or a
+rotated `logcat.09`) — both classic logcat timestamps (`07-12 14:10:14.880`) and cached logs
 with year-prefixed timestamps (`2026-07-14 14:27:36.530`) are
-supported. Any size works — a 150 MB file indexes in under a second, gigabyte files in a few
+supported, as are `-v usec` / `-v nsec` captures. Any size works — a 150 MB file indexes in under a second, gigabyte files in a few
 seconds with a progress bar. While it loads you'll see
 `Indexing: X / Y MB` at the bottom; you can Cancel.
 
@@ -36,8 +36,8 @@ Every opened file gets its own tab across the top, as in Sublime Text:
 
 - **Open Log** lets you pick several files at once (Ctrl/Shift-click in the
   dialog); **+** at the end of the tab strip does the same.
-- **Open Folder** opens every `.txt` and `.log` file directly inside the
-  chosen folder (subfolders are skipped), in name order.
+- **Open Folder** opens every text file directly inside the chosen folder
+  (subfolders are skipped), in name order.
 - Tabs shrink as more files open and the strip scrolls once they reach their
   smallest readable width; switching tabs always scrolls the active one into
   view, and **+** never scrolls away.
@@ -74,6 +74,7 @@ files have hits. The button waits while files are still loading.
   - **Show only checked** — the view keeps only those tags.
   - **Hide checked** — those tags disappear (perfect for muting `adbd`,
     `CCodec`, `BufferQueue` noise).
+- Lines with no tag are grouped as *(no tag)*.
 - Flipping the mode keeps your checks, so it doubles as an "invert" switch.
 - *Clear (n)* unchecks everything.
 
@@ -197,7 +198,7 @@ span), including presets, the tag search box and the selection highlight.
 ## Exporting
 
 **Export Filtered** (top-right) writes exactly the lines you currently see to
-a new `.txt`/`.log` file (default `cleaned_logcat.txt`). A 266K-line export
+a new `.txt` file (default `<source>_filtered.txt`). A 266K-line export
 takes well under a second.
 
 ## Keyboard shortcuts

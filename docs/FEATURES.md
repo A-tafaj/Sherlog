@@ -1,7 +1,8 @@
 # Sherlog — Feature List
 
 ## File handling
-- Opens `.txt` / `.log` Android logcat dumps (threadtime format).
+- Opens Android logcat dumps (threadtime format): `.txt`, `.log`, or rotated
+  files like `logcat.09`.
 - No practical size limit: files are indexed in one streaming pass and never
   loaded into memory (~25 bytes of metadata per line; text stays on disk).
 - Handles LF and CRLF endings, missing final newline, lines of any length,
@@ -13,7 +14,7 @@
 
 ## Tabs
 - Several files open at once, one tab each (Sublime-style): **Open Log**
-  picks several files, **Open Folder** opens every `.txt`/`.log` directly in
+  picks several files, **Open Folder** opens every text file directly in
   a folder, and **+** at the end of the tab strip adds more.
 - A file that is already open isn't opened twice — its tab is shown instead.
 - Each tab keeps its own filters, search, highlight and scroll position.
@@ -36,6 +37,8 @@
 - Two timestamp formats: classic logcat (`07-12 14:10:14.880`) and
   year-prefixed cached logs (`2026-07-14 14:27:36.530`), with
   correct ordering across month/year boundaries.
+- Microsecond and nanosecond timestamps (`-v usec` / `-v nsec`).
+- Lines with no tag are listed as *(no tag)*.
 - Lines that don't match the format are kept with level "Other" and inherit
   the previous line's timestamp so stack traces stay with their crash.
 
@@ -121,6 +124,7 @@
 - Writes the currently filtered lines to a new `.txt`/`.log` file, streaming
   (266 K lines ≈ 0.1 s). Byte-exact copies of the original lines; a UTF-16
   source is written out as UTF-8.
+- Default name `<source>_filtered.txt`; a name typed without an extension gets `.txt`.
 
 ## Viewer
 - Severity coloring (red/pink/orange/green/blue/gray) + row tint for E/W.

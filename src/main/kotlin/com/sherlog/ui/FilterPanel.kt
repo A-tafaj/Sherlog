@@ -29,12 +29,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sherlog.filter.FilterMode
 import com.sherlog.model.LogLevel
 import com.sherlog.parser.LogcatLineParser
+
+/**
+ * What the tag list shows for [tag]. Kernel/driver lines (`W         : ...`)
+ * have an empty tag; the filters still key on the real (empty) name.
+ */
+internal fun tagLabel(tag: String): String = tag.ifEmpty { "(no tag)" }
 
 @Composable
 fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
@@ -82,10 +90,10 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
                 val byCount = state.sortTagsByCount
                 val tagOrder = remember(index, query, byCount) {
                     val ids = (0 until index.tags.size).filter {
-                        query.isBlank() || index.tags[it].contains(query, ignoreCase = true)
+                        query.isBlank() || tagLabel(index.tags[it]).contains(query, ignoreCase = true)
                     }
                     if (byCount) ids.sortedByDescending { index.tagCounts[it] }
-                    else ids.sortedBy { index.tags[it].lowercase() }
+                    else ids.sortedBy { tagLabel(index.tags[it]).lowercase() }
                 }
                 if (tagOrder.isEmpty()) {
                     Text(
@@ -111,9 +119,12 @@ fun FilterPanel(state: AppState, modifier: Modifier = Modifier) {
                         ) {
                             Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(end = 4.dp))
                             Text(
-                                tag,
+                                tagLabel(tag),
                                 fontSize = 12.sp,
                                 fontFamily = FontFamily.Monospace,
+                                // "(no tag)" is a stand-in, not a tag name.
+                                fontStyle = if (tag.isEmpty()) FontStyle.Italic else null,
+                                color = if (tag.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
                                 maxLines = 1,
                                 modifier = Modifier.weight(1f),
                             )

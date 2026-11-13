@@ -166,6 +166,22 @@ class AppState(
     var statusMessage by mutableStateOf("Open a log file or a folder to begin.")
         private set
 
+    /**
+     * A heads-up the status bar keeps showing beside [statusMessage], which
+     * every re-filter rewrites: "this isn't logcat", "these files were
+     * skipped". Gone when dismissed or when another file loads in this tab.
+     */
+    var notice by mutableStateOf<String?>(null)
+        private set
+
+    fun addNotice(text: String) {
+        notice = notice?.let { "$it · $text" } ?: text
+    }
+
+    fun dismissNotice() {
+        notice = null
+    }
+
     private var workJob: Job? = null
     private var applyJob: Job? = null
 
@@ -187,6 +203,7 @@ class AppState(
         currentMatchLine = -1
         lineSelection = null
         selectionAnchor = -1
+        notice = null
         this.file = file
         isLoading = true
         statusMessage = "Indexing ${file.name}…"
@@ -209,6 +226,12 @@ class AppState(
                 timeFromText = idx.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
                 timeToText = idx.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
                 statusMessage = "%,d lines · %s".format(idx.lineCount, file.name)
+                // Every parsed line has a tag (maybe an empty one), so no tags
+                // means no line was logcat. Without saying so, a plain text
+                // file looks like a log that failed to colour.
+                if (idx.lineCount > 0 && idx.tags.isEmpty()) {
+                    addNotice("No logcat lines found — showing it as plain text")
+                }
                 runFilter(idx)
             } catch (e: Exception) {
                 if (isActive) statusMessage = "Failed to open ${file.name}: ${e.message}"

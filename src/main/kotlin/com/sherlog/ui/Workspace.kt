@@ -3,6 +3,7 @@ package com.sherlog.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.sherlog.core.LogFiles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import java.io.File
@@ -34,11 +35,14 @@ class Workspace(private val scope: CoroutineScope) {
 
     /**
      * Opens [files] in tabs, in order, and shows the first. A file that is
-     * already open is not opened twice; its tab is shown instead.
+     * already open is not opened twice; its tab is shown instead. Files that
+     * aren't text ([LogFiles.isOpenable]) are skipped and named: in a notice
+     * on the first tab opened, or in the status when nothing opened.
      */
     fun open(files: List<File>) {
+        val (openable, skipped) = files.partition(LogFiles::isOpenable)
         var first: AppState? = null
-        for (file in files) {
+        for (file in openable) {
             val tab = tabs.firstOrNull { it.shows(file) } ?: run {
                 val tab = tabs.firstOrNull { it.file == null } ?: newTab().also { tabs = tabs + it }
                 tab.openFile(file)
@@ -47,12 +51,22 @@ class Workspace(private val scope: CoroutineScope) {
             if (first == null) first = tab
         }
         first?.let(::select)
+        if (skipped.isEmpty()) return
+        val names = skipped.take(3).joinToString(", ") { it.name } +
+            if (skipped.size > 3) " and ${skipped.size - 3} more" else ""
+        val count = if (skipped.size == 1) "1 file that isn't" else "${skipped.size} files that aren't"
+        if (first == null) active.showStatus("Nothing opened — not a text file: $names")
+        else first.addNotice("Skipped $count text: $names")
     }
 
-    /** Opens the .txt/.log files directly inside [dir] (see [logFilesIn]). */
+    /**
+     * Opens the files directly inside [dir] that are text, whatever their
+     * extension — logcat's rotated `logcat.01` … `logcat.09` have none that
+     * says so. Binaries are skipped and named (see [open]).
+     */
     fun openFolder(dir: File) {
-        val files = logFilesIn(dir)
-        if (files.isEmpty()) active.showStatus("No .txt or .log files in ${dir.name}.") else open(files)
+        val files = filesIn(dir)
+        if (files.isEmpty()) active.showStatus("${dir.name} has no files in it.") else open(files)
     }
 
     fun select(tab: AppState) {
@@ -149,12 +163,14 @@ class Workspace(private val scope: CoroutineScope) {
     }
 
     companion object {
-        private val LOG_EXTENSIONS = setOf("txt", "log")
-
-        /** The .txt/.log files directly inside [dir], by name; subfolders are not walked. */
-        fun logFilesIn(dir: File): List<File> =
+        /**
+         * The files directly inside [dir], by name; subfolders are not walked.
+         * Hidden files are left out: Windows' `desktop.ini` by its attribute,
+         * dot-files like a Mac's `.DS_Store` by name (Windows doesn't hide them).
+         */
+        fun filesIn(dir: File): List<File> =
             dir.listFiles().orEmpty()
-                .filter { it.isFile && it.extension.lowercase() in LOG_EXTENSIONS }
+                .filter { it.isFile && !it.isHidden && !it.name.startsWith(".") }
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 }
