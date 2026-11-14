@@ -15,7 +15,7 @@ Or build a Windows installer once and use it from the Start menu:
 
 ## Opening a log
 
-Click **Open Log** (top-left) and pick a logcat dump (`.txt`, `.log`, or a
+Click **File ▾ → Open File…** (top-left) and pick a logcat dump (`.txt`, `.log`, or a
 rotated `logcat.09`) — both classic logcat timestamps (`07-12 14:10:14.880`) and cached logs
 with year-prefixed timestamps (`2026-07-14 14:27:36.530`) are
 supported, as are `-v usec` / `-v nsec` captures. Any size works — a 150 MB file indexes in under a second, gigabyte files in a few
@@ -34,9 +34,9 @@ time-range fields are pre-filled with the first and last timestamp in the file.
 
 Every opened file gets its own tab across the top, as in Sublime Text:
 
-- **Open Log** lets you pick several files at once (Ctrl/Shift-click in the
+- **Open File…** lets you pick several files at once (Ctrl/Shift-click in the
   dialog); **+** at the end of the tab strip does the same.
-- **Open Folder** opens every text file directly inside the chosen folder
+- **Open Folder…** opens every text file directly inside the chosen folder
   (subfolders are skipped), in name order.
 - Tabs shrink as more files open and the strip scrolls once they reach their
   smallest readable width; switching tabs always scrolls the active one into
@@ -197,11 +197,16 @@ that leaves nothing, the status bar says `0 lines — N filters active`.
 **Clear Filters** resets everything (time range resets to the file's full
 span), including presets, the tag search box and the selection highlight.
 
-## Exporting
+## Saving and exporting
 
-**Export Filtered** (top-right) writes exactly the lines you currently see to
-a new `.txt` file (default `<source>_filtered.txt`). A 266K-line export
-takes well under a second.
+- **File ▾ → Save** (`Ctrl`+`S`) keeps only the lines in view and removes the
+  hidden ones from the file, after asking. The filters reset, since they're
+  now part of the file.
+- **Save As…** (`Ctrl`+`Shift`+`S`) writes the lines in view to a new file
+  and switches the tab to it.
+- **Export Filtered** (the disk-with-arrow icon, top-right) writes a copy to
+  a new `.txt` file (default `<source>_filtered.txt`) and leaves this one as
+  it is. A 266K-line export takes well under a second.
 
 ## Keyboard shortcuts
 
@@ -212,7 +217,8 @@ takes well under a second.
 | `Enter` / `Shift`+`Enter` | In the search box: next / previous match |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the line selection, then the search, then the highlight |
-| `Ctrl`+`O` | Open Log (adds tabs) |
+| `Ctrl`+`O` / `Ctrl`+`Shift`+`O` | Open files / a folder (adds tabs) |
+| `Ctrl`+`S` / `Ctrl`+`Shift`+`S` | Save / Save As |
 | `Ctrl`+`E` | Export Filtered |
 | `Ctrl`+`Tab` / `Ctrl`+`Shift`+`Tab` | Next / previous tab (also `Ctrl`+`PgDn` / `PgUp`) |
 | `Ctrl`+`W` | Close the tab |
@@ -228,5 +234,4 @@ takes well under a second.
 - Text-based filters (search, exclude/keep) rescan the file, so on a very
   large file expect a few seconds with a progress bar; tag/PID/level/time
   filters are instant.
-- Editing logs happens outside the app: select→copy into your editor, or
-  Export Filtered and open the result. The log view itself is read-only.
+- Lines can't be edited in the app yet: filter, then Save or Export.

@@ -154,11 +154,20 @@ class Workspace(
      * would be left showing an index of the old content.
      */
     fun exportActive(target: File) {
-        if (tabs.any { it !== active && it.shows(target) }) {
-            active.showStatus("${target.name} is open in another tab — close it there first, or export under another name.")
-            return
-        }
+        if (openElsewhere(target, "export")) return
         active.export(target)
+    }
+
+    /** Save As for the active tab; refused onto a file another tab has open, like [exportActive]. */
+    fun saveActiveAs(target: File) {
+        if (openElsewhere(target, "save")) return
+        active.saveAs(target)
+    }
+
+    private fun openElsewhere(target: File, verb: String): Boolean {
+        if (tabs.none { it !== active && it.shows(target) }) return false
+        active.showStatus("${target.name} is open in another tab — close it there first, or $verb under another name.")
+        return true
     }
 
     private fun AppState.shows(other: File): Boolean {

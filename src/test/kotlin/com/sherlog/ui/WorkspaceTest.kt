@@ -285,4 +285,90 @@ class WorkspaceTest {
         assertTrue("open in another tab" in ws.active.statusMessage, ws.active.statusMessage)
         assertContentEquals(before, fileB.readBytes())
     }
+
+    private val mixed get() = log(
+        "mixed.txt",
+        line("10:00:00", 'I', "Keep", "first"),
+        line("10:00:01", 'D', "Noise", "drop me"),
+        line("10:00:02", 'E', "Keep", "second"),
+        line("10:00:03", 'D', "Noise", "drop me too"),
+    )
+
+    /** Hides the Noise tag in the active tab and waits for the view to settle. */
+    private fun Workspace.hideNoise() {
+        val tab = active
+        tab.selectedTags = setOf("Noise")
+        tab.tagMode = com.sherlog.filter.FilterMode.HIDE
+        tab.scheduleApply(0)
+        awaitUntil("the filter") { tab.filteredLines.size == 2 && !tab.isBusy }
+    }
+
+    @Test
+    fun `save keeps only the lines in view, re-indexes the file and resets the filters`() {
+        val ws = Workspace(scope)
+        val file = mixed
+        ws.open(listOf(file))
+        ws.awaitLoaded()
+        assertFalse(ws.active.canSave) // nothing hidden, nothing to save
+        ws.hideNoise()
+        assertTrue(ws.active.canSave)
+        assertEquals(2, ws.active.hiddenLineCount)
+
+        ws.active.save()
+        awaitUntil("the save") { !ws.active.isLoading && ws.active.index?.lineCount == 2 }
+        assertEquals(
+            listOf(line("10:00:00", 'I', "Keep", "first"), line("10:00:02", 'E', "Keep", "second")),
+            file.readLines(),
+        )
+        assertEquals(listOf("Keep"), ws.active.index!!.tags.toList()) // the hidden tag left with its lines
+        assertEquals(0, ws.active.activeFilterCount)
+        assertEquals(2, ws.active.filteredLines.size)
+        assertFalse(ws.active.canSave)
+    }
+
+    @Test
+    fun `save as writes the view to a new file, leaves the original alone and shows the new one`() {
+        val ws = Workspace(scope)
+        val original = mixed
+        val before = original.readBytes()
+        ws.open(listOf(original))
+        ws.awaitLoaded()
+        ws.hideNoise()
+
+        val target = File(dir, "keep_only.txt")
+        ws.saveActiveAs(target)
+        awaitUntil("the save") { !ws.active.isLoading && ws.active.file == target && ws.active.index != null }
+        assertEquals(1, ws.tabs.size) // the same tab, now on the new file
+        assertEquals(2, target.readLines().size)
+        assertContentEquals(before, original.readBytes())
+        assertEquals(0, ws.active.activeFilterCount)
+    }
+
+    @Test
+    fun `save as refuses a file another tab has open`() {
+        val ws = Workspace(scope)
+        val fileB = b
+        val before = fileB.readBytes()
+        ws.open(listOf(mixed, fileB))
+        ws.awaitLoaded()
+        ws.select(ws.tabs[0])
+        ws.hideNoise()
+        ws.saveActiveAs(fileB)
+        assertTrue("open in another tab" in ws.active.statusMessage, ws.active.statusMessage)
+        assertContentEquals(before, fileB.readBytes())
+        assertEquals("mixed.txt", ws.active.file!!.name)
+    }
+
+    @Test
+    fun `a view with no lines can't be saved or exported`() {
+        val ws = Workspace(scope)
+        ws.open(listOf(mixed))
+        ws.awaitLoaded()
+        val tab = ws.active
+        tab.pidText = "4242"
+        tab.scheduleApply(0)
+        awaitUntil("the filter") { tab.filteredLines.isEmpty() && !tab.isBusy }
+        assertFalse(tab.canWriteView)
+        assertFalse(tab.canSave)
+    }
 }
