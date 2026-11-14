@@ -8,9 +8,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
@@ -105,6 +107,10 @@ fun LogViewer(
     onSelectAll: () -> Unit,
     textScale: Float,
     onZoom: (steps: Int) -> Unit,
+    /** Match positions for the scrollbar markers; empty while they're being recounted. */
+    matchPositions: IntArray,
+    currentMatchIndex: Int,
+    onMatchClick: (matchIndex: Int) -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
@@ -150,7 +156,8 @@ fun LogViewer(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(end = 12.dp)
+                    // Room for the scrollbar (8 dp) and, left of it, the match markers.
+                    .padding(end = 18.dp)
                     .lineSelectionGestures(
                         listState,
                         scope,
@@ -171,6 +178,13 @@ fun LogViewer(
                 }
             }
         }
+        MatchMarkers(
+            matches = matchPositions,
+            total = filteredLines.size,
+            currentMatchIndex = currentMatchIndex,
+            onMarkerClick = onMatchClick,
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 10.dp).width(6.dp).fillMaxHeight(),
+        )
         VerticalScrollbar(
             adapter = rememberScrollbarAdapter(listState),
             modifier = Modifier.align(Alignment.CenterEnd),

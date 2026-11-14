@@ -327,6 +327,10 @@ fun App(
                                 onSelectAll = { state.selectAllLines() },
                                 textScale = workspace.prefs.textScale,
                                 onZoom = { workspace.prefs.zoom(it) },
+                                // Stale while recounting: they may index the previous view.
+                                matchPositions = if (state.highlightCounting) IntArray(0) else state.highlightMatches,
+                                currentMatchIndex = state.currentMatchIndex,
+                                onMatchClick = { revealMatch(state.goToMatch(it)) },
                                 listState = listState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )

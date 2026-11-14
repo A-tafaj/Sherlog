@@ -96,6 +96,7 @@
   from the occurrence you selected (or clicked, in Find mode), from the current (amber) match while it's
   on screen, or from the lines on screen once you've scrolled away. The view
   only scrolls when the next match is off screen.
+- Ticks beside the scrollbar mark every match; clicking one jumps to it.
 - Ctrl+C copies the selection (within a line).
 
 ## Multi-line selection & copy
