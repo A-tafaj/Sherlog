@@ -124,8 +124,9 @@
   filters are active rather than showing a bare empty view.
 
 ## Editing
-- Every line is editable; Delete / `Ctrl+Shift+K` removes lines. Edits stay
-  in memory (only changed lines, so big files are fine) until Save.
+- Every line is editable, editor-style (Enter, joining lines, ↑ ↓, undo/redo);
+  Delete / `Ctrl+Shift+K` removes lines. Edits stay in memory (only changed
+  lines, so big files are fine) until Save.
 - Unsaved tabs show ●, changed lines a bar; closing or quitting asks first.
 - Search, Find and Export see edits right away; level, tag and colour update on Save.
 

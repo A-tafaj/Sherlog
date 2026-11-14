@@ -108,6 +108,65 @@ class EditingTest {
     }
 
     @Test
+    fun `undo and redo step through edits, a run of typing being one step`() {
+        val (tab, _) = open()
+        tab.editLine(1, lines[1] + "a", original = lines[1])
+        tab.editLine(1, lines[1] + "ab", original = lines[1]) // the same run of typing
+        tab.editLine(2, lines[2] + "!", original = lines[2])
+        assertEquals(2, tab.undo())
+        assertEquals(null, tab.editedLines[2])
+        assertEquals(1, tab.undo())
+        assertFalse(tab.isDirty) // both keystrokes went at once
+        assertEquals(null, tab.undo()) // nothing left
+        assertEquals(1, tab.redo())
+        assertEquals(lines[1] + "ab", tab.editedLines[1])
+        tab.editLine(3, lines[3] + "?", original = lines[3])
+        assertEquals(null, tab.redo()) // a new edit drops what could be redone
+    }
+
+    @Test
+    fun `undoing a deletion puts the lines back in the view, edits and all`() {
+        val (tab, _) = open()
+        tab.editLine(2, line(2, "edited"), original = lines[2])
+        tab.deleteLines(1..3)
+        assertContentEquals(intArrayOf(0, 4, 5), tab.filteredLines)
+        tab.undo()
+        assertContentEquals(lines.indices.toList().toIntArray(), tab.filteredLines)
+        assertEquals(line(2, "edited"), tab.editedLines[2])
+        assertEquals(0, tab.deletedCount)
+        tab.redo()
+        assertContentEquals(intArrayOf(0, 4, 5), tab.filteredLines)
+    }
+
+    @Test
+    fun `backspace and delete at a row's edge join rows, and undo splits them again`() {
+        val (tab, _) = open()
+        assertEquals(lines[1].length, tab.joinWithPrevious(2)) // the caret goes where they met
+        assertEquals(lines[1] + lines[2], tab.editedLines[1])
+        assertFalse(2 in tab.filteredLines)
+        assertTrue(tab.joinWithNext(2)) // the row at position 2 (line 3) takes in line 4
+        assertEquals(lines[3] + lines[4], tab.editedLines[3])
+        assertEquals(null, tab.joinWithPrevious(0)) // nothing above the first row
+        assertFalse(tab.joinWithNext(tab.filteredLines.lastIndex))
+
+        tab.undo()
+        tab.undo()
+        assertFalse(tab.isDirty)
+        assertContentEquals(lines.indices.toList().toIntArray(), tab.filteredLines)
+    }
+
+    @Test
+    fun `a line split with enter is saved as two lines`() {
+        val (tab, file) = open()
+        tab.editLine(0, "${lines[0]}\nnew line", original = lines[0])
+        var saved: Boolean? = null
+        tab.save { saved = it }
+        awaitUntil("the save") { saved == true && !tab.isLoading && tab.index?.lineCount == lines.size + 1 }
+        assertEquals(listOf(lines[0], "new line") + lines.drop(1), file.readLines())
+        assertEquals(null, tab.undo()) // the history went with the reload
+    }
+
+    @Test
     fun `a save that fails keeps the edits`() {
         val (tab, file) = open()
         tab.editLine(0, line(0, "edited"), original = lines[0])

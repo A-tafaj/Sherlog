@@ -201,7 +201,9 @@ span), including presets, the tag search box and the selection highlight.
 
 ## Editing
 
-Click a line and type to change it. To remove lines, select them and press
+Click a line and type to change it, as in any editor: Enter splits a line,
+Backspace/Delete at a line's edge joins lines, ↑ ↓ move between lines, and
+`Ctrl`+`Z` / `Ctrl`+`Y` undo and redo. To remove lines, select them and press
 `Delete` (or right-click → Delete); `Ctrl`+`Shift`+`K` deletes the line with
 the caret. Changed lines get a bar on the left and the tab a ●. Nothing
 touches the file until you **Save**, and closing with unsaved changes asks.
@@ -234,6 +236,7 @@ touches the file until you **Save**, and closing with unsaved changes asks.
 | `Ctrl`+`A` | Select all lines in the view |
 | `Ctrl`+`B` | Hide / show the filter panel |
 | `Delete` / `Ctrl`+`Shift`+`K` | Delete the selected lines / the line with the caret |
+| `Ctrl`+`Z` / `Ctrl`+`Y` | Undo / redo an edit (in the log; a text box keeps its own) |
 | `Ctrl`+`+` / `Ctrl`+`-` / `Ctrl`+`0` | Zoom the log text in / out / reset (also `Ctrl`+wheel) |
 | `Ctrl`+`C` | Copy the selected lines, or the text selected within a line |
 

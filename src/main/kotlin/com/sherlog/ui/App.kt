@@ -241,6 +241,13 @@ fun App(
         }
     }
 
+    /** Undoes (or redoes) one edit and shows the line it changed, if that's off screen. */
+    fun undo(redo: Boolean) {
+        val line = (if (redo) state.redo() else state.undo()) ?: return
+        val position = state.filteredLines.binarySearch(line)
+        if (position >= 0) revealMatch(position)
+    }
+
     fun onShortcut(e: KeyEvent): Boolean {
         if (e.type != KeyEventType.KeyDown) return false
         val exportEnabled = state.canWriteView
@@ -253,6 +260,12 @@ fun App(
             // Only while no field has focus: in a text box, Ctrl+A is the box's.
             // From a clicked row, the viewer takes it (LogViewer).
             rootFocused && e.isCtrlPressed && e.key == Key.A -> { state.selectAllLines(); true }
+            // Undo is the log's only from here or the viewer (LogViewer); in a
+            // text box, Ctrl+Z undoes typing in that box.
+            rootFocused && e.isCtrlPressed && e.key == Key.Z && !e.isShiftPressed -> { undo(redo = false); true }
+            rootFocused && e.isCtrlPressed && (e.key == Key.Y || (e.key == Key.Z && e.isShiftPressed)) -> {
+                undo(redo = true); true
+            }
             // After Ctrl+A from here, focus is still on the root, not in the viewer.
             rootFocused && state.lineSelection != null && (e.key == Key.Delete || e.key == Key.Backspace) -> {
                 state.lineSelection?.let(state::deleteLines); true
@@ -395,6 +408,10 @@ fun App(
                                 edits = state.editedLines,
                                 onEditLine = state::editLine,
                                 onDeleteLines = state::deleteLines,
+                                onJoinPrevious = state::joinWithPrevious,
+                                onJoinNext = state::joinWithNext,
+                                onUndo = { undo(redo = false) },
+                                onRedo = { undo(redo = true) },
                                 listState = listState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )

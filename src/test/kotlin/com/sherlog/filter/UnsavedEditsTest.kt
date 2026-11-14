@@ -53,6 +53,17 @@ class UnsavedEditsTest {
     }
 
     @Test
+    fun `line breaks typed into a line come out as lines with the file's own ending`() = runBlocking {
+        val out = File.createTempFile("unsavededits-out", ".txt")
+        try {
+            LogExporter.export(index, intArrayOf(0, 1), out, mapOf(0 to "first half\nsecond half"))
+            assertEquals("first half\r\nsecond half\r\n" + lines[1] + "\r\n", out.readText())
+        } finally {
+            out.delete()
+        }
+    }
+
+    @Test
     fun `export writes edited lines with their own line ending, the rest byte for byte`() = runBlocking {
         val out = File.createTempFile("unsavededits-out", ".txt")
         try {

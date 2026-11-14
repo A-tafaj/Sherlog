@@ -12,8 +12,12 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.MouseButton
 import androidx.compose.ui.test.click
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -26,7 +30,6 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -89,18 +92,80 @@ class EditingUiTest {
     }
 
     @Test
-    fun `typing into a line edits it, marks the tab, and enter adds nothing`() = runComposeUiTest {
+    fun `typing into a line edits it and marks the tab`() = runComposeUiTest {
         val app = launch()
         typeInto(5, "XYZ")
         val edited = app.tab.editedLines[5]!!
         assertTrue("XYZ" in edited, edited)
         assertEquals(lines[5].length + 3, edited.length)
         onNodeWithText("●").assertExists() // the tab's unsaved mark
+    }
 
-        row(5).performKeyInput { pressKey(Key.Enter) }
+    /** Clicks into line [n] and puts the caret at [offset]. */
+    private fun ComposeUiTest.caretAt(n: Int, offset: Int) {
+        row(n).performClick()
+        row(n).performTextInputSelection(TextRange(offset))
         waitForIdle()
-        assertEquals(edited, app.tab.editedLines[5])
-        assertContentEquals(lines.indices.toList().toIntArray(), app.tab.filteredLines)
+    }
+
+    private fun ComposeUiTest.press(key: Key) {
+        onNode(isFocused()).performKeyInput { pressKey(key) }
+        waitForIdle()
+    }
+
+    /** The focused row's text and caret. */
+    private fun ComposeUiTest.focusedRow(): Pair<String, TextRange> {
+        val node = onNode(isFocused()).fetchSemanticsNode()
+        val text = node.config[SemanticsProperties.EditableText].text
+        return text to node.config[SemanticsProperties.TextSelectionRange]
+    }
+
+    @Test
+    fun `enter splits a line inside its row, and the new line takes typing`() = runComposeUiTest {
+        val app = launch()
+        caretAt(5, lines[5].length)
+        press(Key.Enter)
+        onNode(isFocused()).performTextInput("added")
+        waitForIdle()
+        assertEquals(lines[5] + "\nadded", app.tab.editedLines[5])
+        assertEquals(lines.size, app.tab.filteredLines.size) // still one row until Save
+    }
+
+    @Test
+    fun `backspace at the start of a line joins it to the one above, caret where they meet`() = runComposeUiTest {
+        val app = launch()
+        caretAt(6, 0)
+        press(Key.Backspace)
+        assertEquals(lines[5] + lines[6], app.tab.editedLines[5])
+        assertFalse(6 in app.tab.filteredLines)
+        val (text, caret) = focusedRow()
+        assertEquals(lines[5] + lines[6], text)
+        assertEquals(TextRange(lines[5].length), caret)
+    }
+
+    @Test
+    fun `up and down move between lines, keeping the column`() = runComposeUiTest {
+        launch()
+        caretAt(10, 7)
+        press(Key.DirectionDown)
+        assertEquals(lines[11] to TextRange(7), focusedRow())
+        press(Key.DirectionUp)
+        press(Key.DirectionUp)
+        assertEquals(lines[9] to TextRange(7), focusedRow())
+    }
+
+    @Test
+    fun `ctrl+z undoes an edit in the log, but in the search box it is the box's own`() = runComposeUiTest {
+        val app = launch()
+        typeInto(4, "!")
+        ctrl(Key.Z)
+        assertFalse(app.tab.isDirty)
+        ctrl(Key.Y)
+        assertTrue(app.tab.isDirty)
+
+        ctrl(Key.F) // into the search box
+        ctrl(Key.Z)
+        assertTrue(app.tab.isDirty) // the log's edit is untouched
     }
 
     @Test

@@ -22,6 +22,7 @@ import com.sherlog.parser.LogcatLineParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -42,6 +43,22 @@ enum class SearchMode {
 
 /** Most lines one copy puts on the clipboard (~10 MB of typical logcat). */
 private const val MAX_COPY_LINES = 100_000
+
+/** Keystrokes in one line closer together than this undo as one step. */
+private const val TYPING_RUN_MS = 1_000L
+private const val MAX_UNDO = 500
+
+/** Two ascending arrays as one ascending array. */
+private fun mergeSorted(a: IntArray, b: IntArray): IntArray {
+    val out = IntArray(a.size + b.size)
+    var i = 0
+    var j = 0
+    var k = 0
+    while (i < a.size && j < b.size) out[k++] = if (a[i] <= b[j]) a[i++] else b[j++]
+    while (i < a.size) out[k++] = a[i++]
+    while (j < b.size) out[k++] = b[j++]
+    return out
+}
 
 /**
  * All state of one open file (one tab — see [Workspace]) and the background
@@ -227,17 +244,22 @@ class AppState(
         lineSelection = null
         selectionAnchor = -1
         notice = null
-        // Edits key on this file's lines; a (re)loaded file has its own.
+        // Edits key on this file's lines; a (re)loaded file has its own. So
+        // does the undo history: its line numbers mean nothing after a save.
         editedLines.clear()
         deletedLines = BitSet()
         deletedCount = 0
+        undoStack.clear()
+        redoStack.clear()
         this.file = file
         isLoading = true
         statusMessage = "Indexing ${file.name}…"
         // A superseded load's cleanup runs late, after the next load has
         // begun; the generation keeps it from clearing that one's isLoading.
         val generation = ++loadGeneration
-        workJob = scope.launch(indexDispatcher) {
+        // ATOMIC: even cancelled before it starts, the body runs (and stops at
+        // its first check), so the finally below always settles isLoading.
+        workJob = scope.launch(indexDispatcher, start = CoroutineStart.ATOMIC) {
             try {
                 val idx = LogIndexer.index(file) { done, total ->
                     progress = if (total > 0) done.toFloat() / total else 0f
@@ -380,7 +402,8 @@ class AppState(
                     for (k in 0 until n) {
                         if (k > 0) append(System.lineSeparator())
                         val line = lines[range.first + k]
-                        append(edits[line] ?: prov.line(line))
+                        // A row can hold new lines typed into it.
+                        append(edits[line]?.replace("\n", System.lineSeparator()) ?: prov.line(line))
                     }
                 }
             }.getOrElse {
@@ -413,6 +436,10 @@ class AppState(
         applyJob?.cancel()
         applyJob = scope.launch(Dispatchers.IO) {
             delay(debounceMs)
+            // The file was (re)opened meanwhile: that load filters on its own,
+            // and its job is the "work" this would cancel — a load cancelled
+            // before it starts never clears isLoading. (Seen after Save.)
+            if (index !== idx) return@launch
             workJob?.cancel()
             workJob = scope.launch(Dispatchers.IO) {
                 try {
@@ -484,6 +511,16 @@ class AppState(
     }
 
     fun clearFilters() {
+        resetFilters()
+        scheduleApply(0)
+    }
+
+    /**
+     * [clearFilters] without the re-filter, for a caller that reloads the file
+     * anyway (Save): the load filters with these, and a re-filter queued
+     * beside it would race it.
+     */
+    private fun resetFilters() {
         selectedTags = emptySet()
         tagMode = FilterMode.SHOW_ONLY
         pidText = ""
@@ -500,7 +537,6 @@ class AppState(
         selectedPresets = emptySet()
         tagSearchText = ""
         clearHighlight()
-        scheduleApply(0)
     }
 
     /**
@@ -550,12 +586,17 @@ class AppState(
 
     /**
      * Types [text] into file line [line], whose text in the file is
-     * [original]. Typing it back to the original is no edit at all.
+     * [original]. Typing it back to the original is no edit at all. The text
+     * may hold line breaks (Enter, a paste): new lines live inside their row
+     * until Save writes them out and the reload gives each a row of its own.
      */
     fun editLine(line: Int, text: String, original: String) {
-        if (text == original) editedLines.remove(line) else editedLines[line] = text
-        // Positions don't move, so the matches stay usable while recounting.
-        if (highlightNeedle.isNotEmpty()) scheduleHighlightCount(keepMatches = true)
+        val before = editedLines[line]
+        val after = text.takeUnless { it == original }
+        if (after == before) return
+        val change = LineChange(line, before, after, System.currentTimeMillis())
+        apply(change, forward = true)
+        record(change)
     }
 
     /** Deletes the lines at [range] (positions in the view). Save takes them out of the file. */
@@ -564,21 +605,151 @@ class AppState(
         val first = range.first.coerceAtLeast(0)
         val last = range.last.coerceAtMost(lines.lastIndex)
         if (first > last) return
-        val gone = deletedLines.clone() as BitSet
-        for (p in first..last) gone.set(lines[p])
-        // Only the edited keys, not every deleted line: Ctrl+A, Delete on a
-        // million lines must not mean a million map updates.
-        editedLines.keys.filter { gone.get(it) }.forEach { editedLines.remove(it) }
-        deletedLines = gone
-        deletedCount = gone.cardinality()
-        filteredLines = lines.copyOfRange(0, first) + lines.copyOfRange(last + 1, lines.size)
-        lineSelection = null
-        selectionAnchor = -1
+        val change = deletionOf(lines.copyOfRange(first, last + 1))
+        apply(change, forward = true)
+        record(change)
         val n = last - first + 1
         statusMessage = "Deleted %,d line%s — Save writes it to the file.".format(n, if (n == 1) "" else "s")
-        // Every position after the cut moved up.
+    }
+
+    /**
+     * Backspace at the very start of the row at [position]: its text moves
+     * onto the end of the row above, and the row goes. Returns where the
+     * caret belongs in that row (where the two met), or null at the top.
+     */
+    fun joinWithPrevious(position: Int): Int? {
+        val lines = filteredLines
+        if (position !in 1..lines.lastIndex) return null
+        val above = lines[position - 1]
+        val aboveText = textOf(above) ?: return null
+        joinLines(above, lines[position]) ?: return null
+        return aboveText.length
+    }
+
+    /** Delete at the very end of the row at [position]: the row below joins it. */
+    fun joinWithNext(position: Int): Boolean {
+        val lines = filteredLines
+        if (position !in 0 until lines.lastIndex) return false
+        return joinLines(lines[position], lines[position + 1]) != null
+    }
+
+    /** [keep] gets [drop]'s text on its end, and [drop] is deleted: one undo step. */
+    private fun joinLines(keep: Int, drop: Int): Unit? {
+        val keepText = textOf(keep) ?: return null
+        val dropText = textOf(drop) ?: return null
+        val joined = keepText + dropText
+        val edit = LineChange(keep, editedLines[keep], joined.takeUnless { it == originalOf(keep) }, 0)
+        val steps = Steps(listOf(edit, deletionOf(intArrayOf(drop))))
+        apply(steps, forward = true)
+        record(steps)
+        return Unit
+    }
+
+    // ---- Undo / redo ----
+    // Every change to the edits is one of these, recorded once it's applied.
+    // Undo applies it backwards; each entry is one user action, so undoing a
+    // join brings back both the row that went and the text that moved.
+
+    private sealed interface Change
+    /** A line's edited text went from [before] to [after] (null: as in the file). */
+    private class LineChange(val line: Int, val before: String?, var after: String?, var at: Long) : Change
+    /** [lines] were deleted, taking [edits] with them, while the view showed [filter]. */
+    private class LinesDeleted(val lines: IntArray, val edits: Map<Int, String>, val filter: FilterState) : Change
+    private class Steps(val steps: List<Change>) : Change
+
+    private val undoStack = ArrayDeque<Change>()
+    private val redoStack = ArrayDeque<Change>()
+
+    private fun deletionOf(lines: IntArray): LinesDeleted {
+        val set = lines.toHashSet()
+        return LinesDeleted(lines, editedLines.filterKeys { it in set }, appliedFilter)
+    }
+
+    private fun record(change: Change) {
+        val top = undoStack.lastOrNull()
+        // A run of typing in one line is one step, as in any editor.
+        if (change is LineChange && top is LineChange && top.line == change.line && change.at - top.at < TYPING_RUN_MS) {
+            top.after = change.after
+            top.at = change.at
+        } else {
+            undoStack.addLast(change)
+            if (undoStack.size > MAX_UNDO) undoStack.removeFirst()
+        }
+        redoStack.clear()
+    }
+
+    /** Ctrl+Z. Returns a file line it changed, so the view can show it; null when nothing to undo. */
+    fun undo(): Int? {
+        val change = undoStack.removeLastOrNull() ?: return null
+        apply(change, forward = false)
+        redoStack.addLast(change)
+        return lineOf(change)
+    }
+
+    /** Ctrl+Y / Ctrl+Shift+Z. */
+    fun redo(): Int? {
+        val change = redoStack.removeLastOrNull() ?: return null
+        apply(change, forward = true)
+        undoStack.addLast(change)
+        return lineOf(change)
+    }
+
+    private fun lineOf(change: Change): Int = when (change) {
+        is LineChange -> change.line
+        is LinesDeleted -> change.lines.first()
+        is Steps -> lineOf(change.steps.first())
+    }
+
+    private fun apply(change: Change, forward: Boolean) {
+        when (change) {
+            is LineChange -> {
+                val text = if (forward) change.after else change.before
+                if (text == null) editedLines.remove(change.line) else editedLines[change.line] = text
+                // Positions don't move, so the matches stay usable while recounting.
+                if (highlightNeedle.isNotEmpty()) scheduleHighlightCount(keepMatches = true)
+            }
+            is LinesDeleted -> applyDeletion(change, forward)
+            is Steps -> (if (forward) change.steps else change.steps.asReversed()).forEach { apply(it, forward) }
+        }
+    }
+
+    private fun applyDeletion(change: LinesDeleted, forward: Boolean) {
+        val deleted = deletedLines.clone() as BitSet
+        if (forward) {
+            for (line in change.lines) deleted.set(line)
+            // Only the edited keys, not every deleted line: Ctrl+A, Delete on a
+            // million lines must not mean a million map updates.
+            change.edits.keys.forEach { editedLines.remove(it) }
+            filteredLines = IntList(filteredLines.size).apply {
+                for (line in filteredLines) if (!deleted.get(line)) add(line)
+            }.toArray()
+        } else {
+            for (line in change.lines) deleted.clear(line)
+            editedLines.putAll(change.edits)
+        }
+        deletedLines = deleted
+        deletedCount = deleted.cardinality()
+        lineSelection = null
+        selectionAnchor = -1
+        if (!forward) {
+            // Back into the view where they were — if the view still shows what
+            // it did then. After a filter change, only the filters know.
+            if (appliedFilter == change.filter) {
+                filteredLines = mergeSorted(filteredLines, change.lines)
+            } else {
+                scheduleApply(0)
+                return
+            }
+        }
+        // Positions after the change moved.
         scheduleHighlightCount(0)
     }
+
+    /** The line's text as the tab shows it: edited, or from the file. */
+    private fun textOf(line: Int): String? = editedLines[line] ?: originalOf(line)
+
+    private fun originalOf(line: Int): String? =
+        provider?.let { p -> runCatching { p.cachedLine(line) ?: p.line(line) }.getOrNull() }
 
     /** Export Filtered: writes the view to [target] as a copy; this tab stays on its file. */
     fun export(target: File) = writeView(target, showTarget = false)
@@ -630,7 +801,7 @@ class AppState(
                     progressLabel = "$verb: %,d / %,d lines".format(done, total)
                 }
                 if (showTarget) {
-                    clearFilters()
+                    resetFilters()
                     openFile(target)
                 } else {
                     statusMessage = "Exported %,d lines to ${target.name}".format(lines.size)
