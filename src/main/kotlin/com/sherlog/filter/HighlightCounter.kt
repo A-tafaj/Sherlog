@@ -20,6 +20,8 @@ object HighlightCounter {
         lines: IntArray,
         needle: String,
         isRegex: Boolean = false,
+        /** Unsaved text by file line, tested instead of the file's (see [FilterEngine.apply]). */
+        edits: Map<Int, String> = emptyMap(),
     ): IntArray {
         if (needle.isEmpty() || lines.isEmpty()) return IntArray(0)
         // Shares the filter path's matcher so find-mode search honours the
@@ -50,7 +52,7 @@ object HighlightCounter {
                     read += r
                 }
                 pos += read
-                val line = index.encoding.decodeLine(buffer, 0, read)
+                val line = (if (edits.isEmpty()) null else edits[i]) ?: index.encoding.decodeLine(buffer, 0, read)
                 if (matcher.matches(line)) hits.add(k)
             }
         }

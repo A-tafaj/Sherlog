@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -30,12 +31,17 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -47,6 +53,7 @@ import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -111,6 +118,20 @@ fun LogViewer(
     matchPositions: IntArray,
     currentMatchIndex: Int,
     onMatchClick: (matchIndex: Int) -> Unit,
+    /** Unsaved text by file line, shown instead of the file's. */
+    edits: Map<Int, String>,
+    onEditLine: (line: Int, text: String, original: String) -> Unit,
+    /** Deletes the lines at these view positions. */
+    onDeleteLines: (positions: IntRange) -> Unit,
+    /** Backspace at a row's start; returns the caret for the row above, or null. */
+    onJoinPrevious: (position: Int) -> Int?,
+    /** Delete at a row's end; whether the row below joined it. */
+    onJoinNext: (position: Int) -> Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    /** Put the caret in the first line now (a new Untitled tab), then say so. */
+    focusFirstRow: Boolean,
+    onFirstRowFocused: () -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
@@ -130,17 +151,65 @@ fun LogViewer(
     val selected = rememberUpdatedState(onSelectLines)
     val extended = rememberUpdatedState(onExtendLineSelection)
     val zoom = rememberUpdatedState(onZoom)
+    val selection = rememberUpdatedState(lineSelection)
+    // The row the caret is in, as a view position: what Ctrl+Shift+K deletes.
+    var focusedPosition by remember { mutableIntStateOf(-1) }
+    // Where the caret goes next when it leaves its row (Up/Down at an edge,
+    // a join). Rows are text fields of their own, so the row at that position
+    // takes focus and places the caret itself once it's composed.
+    var caretRequest by remember { mutableStateOf<CaretRequest?>(null) }
+    LaunchedEffect(focusFirstRow, filteredLines.isNotEmpty()) {
+        if (focusFirstRow && filteredLines.isNotEmpty()) {
+            caretRequest = CaretRequest(0, offset = 0)
+            onFirstRowFocused()
+        }
+    }
 
-    // A clicked row is a text field, whose own Ctrl+A would select just that
-    // one line's text. In here, Ctrl+A means every line in the view. This sees
-    // keys only while focus is inside the viewer, so the search box and the
-    // filter fields keep their own Ctrl+A.
+    /** Moves the caret into the row at [request]'s position, scrolling it into view first. */
+    fun moveCaret(request: CaretRequest) {
+        if (request.position !in filteredLines.indices) return
+        caretRequest = request
+        val info = listState.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == request.position }
+        val onScreen = item != null && item.offset >= info.viewportStartOffset &&
+            item.offset + item.size <= info.viewportEndOffset
+        if (!onScreen) {
+            val first = listState.firstVisibleItemIndex
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: first
+            scope.launch {
+                when {
+                    request.position <= first -> listState.scrollToItem(request.position)
+                    // One row down off the bottom: scroll a row, as editors do.
+                    request.position <= lastVisible + 1 -> listState.scrollToItem(first + 1)
+                    else -> listState.scrollToItem(request.position)
+                }
+            }
+        }
+    }
+
+    // Keys that act on whole lines. They're seen here only while focus is in
+    // the viewer, so the search box and the filter fields keep their own —
+    // Ctrl+Z there undoes typing in that box, not the log's edits.
+    // A clicked row is a text field whose Ctrl+A would select just that one
+    // line's text; in here it means every line in the view. Delete with lines
+    // selected removes them, as in an editor; without, it's the row's own.
     Box(
         modifier
             .onPreviewKeyEvent {
-                val selectAll = it.type == KeyEventType.KeyDown && it.isCtrlPressed && it.key == Key.A
-                if (selectAll) onSelectAll()
-                selectAll
+                if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val sel = selection.value
+                when {
+                    it.isCtrlPressed && it.key == Key.A -> { onSelectAll(); true }
+                    it.isCtrlPressed && it.key == Key.Z && !it.isShiftPressed -> { onUndo(); true }
+                    it.isCtrlPressed && (it.key == Key.Y || (it.key == Key.Z && it.isShiftPressed)) -> { onRedo(); true }
+                    sel != null && (it.key == Key.Delete || it.key == Key.Backspace) -> { onDeleteLines(sel); true }
+                    it.isCtrlPressed && it.isShiftPressed && it.key == Key.K -> {
+                        val target = sel ?: focusedPosition.takeIf { p -> p in filteredLines.indices }?.let { p -> p..p }
+                        if (target != null) onDeleteLines(target)
+                        true
+                    }
+                    else -> false
+                }
             }
             .ctrlWheelZoom { zoom.value(it) },
     ) {
@@ -149,7 +218,10 @@ fun LogViewer(
         ContextMenuDataProvider(
             items = {
                 val sel = lineSelection
-                if (sel == null) emptyList() else listOf(ContextMenuItem(copyLinesLabel(sel), onCopyLines))
+                if (sel == null) emptyList() else listOf(
+                    ContextMenuItem(copyLinesLabel(sel), onCopyLines),
+                    ContextMenuItem(deleteLinesLabel(sel)) { onDeleteLines(sel) },
+                )
             },
         ) {
             LazyColumn(
@@ -173,7 +245,18 @@ fun LogViewer(
                         isCurrentMatch = pos == currentMatchPosition,
                         isSelected = lineSelection?.contains(pos) == true,
                         textScale = textScale,
+                        editedText = edits[lineIndex],
                         onSelectionChange = onSelectionChange,
+                        onEdit = { text, original -> onEditLine(lineIndex, text, original) },
+                        onFocused = { focusedPosition = pos },
+                        caretRequest = caretRequest?.takeIf { it.position == pos },
+                        onCaretPlaced = { caretRequest = null },
+                        onLeaveUp = { column -> moveCaret(CaretRequest(pos - 1, column = column, intoLastLine = true)) },
+                        onLeaveDown = { column -> moveCaret(CaretRequest(pos + 1, column = column)) },
+                        onBackspaceAtStart = {
+                            onJoinPrevious(pos)?.let { caret -> moveCaret(CaretRequest(pos - 1, offset = caret)) }
+                        },
+                        onDeleteAtEnd = { onJoinNext(pos) },
                     )
                 }
             }
@@ -219,6 +302,30 @@ private fun Modifier.ctrlWheelZoom(onZoom: (steps: Int) -> Unit): Modifier = poi
 internal fun copyLinesLabel(sel: IntRange): String {
     val n = sel.last - sel.first + 1
     return "Copy %,d selected line%s".format(n, if (n == 1) "" else "s")
+}
+
+/**
+ * Where the caret should land in the row at [position]: at [offset] when
+ * given, else at [column] of its first line — or of its last line when
+ * [intoLastLine] (moving up into it). Clamped to the line's length.
+ */
+private data class CaretRequest(
+    val position: Int,
+    val offset: Int? = null,
+    val column: Int = 0,
+    val intoLastLine: Boolean = false,
+) {
+    fun caretIn(text: String): Int {
+        offset?.let { return it.coerceIn(0, text.length) }
+        val lineStart = if (intoLastLine) text.lastIndexOf('\n') + 1 else 0
+        val lineEnd = if (intoLastLine) text.length else text.indexOf('\n').let { if (it < 0) text.length else it }
+        return (lineStart + column).coerceAtMost(lineEnd)
+    }
+}
+
+internal fun deleteLinesLabel(sel: IntRange): String {
+    val n = sel.last - sel.first + 1
+    return "Delete %,d selected line%s".format(n, if (n == 1) "" else "s")
 }
 
 /**
@@ -313,15 +420,21 @@ private fun LazyListState.lineAt(y: Float, clamp: Boolean): Int? {
 }
 
 /**
- * One log line as a read-only text field. A text field (rather than plain
- * Text in a SelectionContainer) is what lets us observe the user's selection:
- * selecting a tag or phrase highlights every occurrence of it across the
- * visible lines.
+ * One log line as a text field, editable like any editor's line. A text
+ * field (rather than plain Text in a SelectionContainer) is also what lets us
+ * observe the user's selection: selecting a tag or phrase highlights every
+ * occurrence of it across the visible lines.
  *
  * Clearing is driven by focus *gain*, not by the selection collapsing: a
  * plain click makes a row newly focused with no selection, so we clear then.
  * Clicking the status-bar next/prev arrows never gives a log row focus (and
  * the collapse it causes is ignored), so navigating keeps the highlight.
+ *
+ * Typing reports the new text through [onEdit]; the file is not touched.
+ * Enter and pasted line breaks stay inside the row (it grows) until Save
+ * writes them out as lines of their own. At the row's edges the caret moves
+ * on: Up/Down into the neighbouring row, Backspace at the start and Delete
+ * at the end join rows — each row being its own field, the viewer does that.
  */
 @Composable
 private fun LogRow(
@@ -333,21 +446,41 @@ private fun LogRow(
     isCurrentMatch: Boolean,
     isSelected: Boolean,
     textScale: Float,
+    /** The unsaved text of this line, or null when it is as in the file. */
+    editedText: String?,
     onSelectionChange: (lineIndex: Int, text: String) -> Unit,
+    onEdit: (text: String, original: String) -> Unit,
+    onFocused: () -> Unit,
+    /** Set when the caret should move into this row; it takes focus and places it. */
+    caretRequest: CaretRequest?,
+    onCaretPlaced: () -> Unit,
+    onLeaveUp: (column: Int) -> Unit,
+    onLeaveDown: (column: Int) -> Unit,
+    onBackspaceAtStart: () -> Unit,
+    onDeleteAtEnd: () -> Unit,
 ) {
     // A line whose bytes are already cached is resolved during composition, so
     // it draws with its real text immediately. Only a genuine cache miss shows
     // the placeholder and loads off the UI thread — otherwise a fast scroll
     // queues one coroutine per row and the "…" outlives the data by far.
     val cached = remember(lineIndex, provider) { runCatching { provider.cachedLine(lineIndex) }.getOrNull() }
-    val text by produceState(cached ?: "…", lineIndex, provider) {
+    // The line as the file has it; null while it is being read.
+    val fromFile by produceState(cached, lineIndex, provider) {
         if (cached == null) {
             value = withContext(Dispatchers.IO) {
-                runCatching { provider.line(lineIndex) }.getOrElse { "<read error: ${it.message}>" }
+                runCatching { provider.line(lineIndex) }.getOrElse { "$READ_ERROR${it.message}>" }
             }
         }
     }
-    var fieldValue by remember(lineIndex, text) { mutableStateOf(TextFieldValue(text)) }
+    // A placeholder or an error message isn't the line, so it can't be edited.
+    val original = fromFile?.takeUnless { it.startsWith(READ_ERROR) }
+    val text = editedText ?: fromFile ?: "…"
+    // The field keeps its own value while the user types, so the caret stays
+    // where it is. When the text changes any other way — the line loading,
+    // a save — the field starts over from the new text.
+    var fieldValue by remember(lineIndex) { mutableStateOf(TextFieldValue(text)) }
+    val value = if (fieldValue.text == text) fieldValue
+    else TextFieldValue(text, TextRange(fieldValue.selection.end.coerceAtMost(text.length)))
     val level = index.level(lineIndex)
     val color = levelColors.getValue(level)
     val rowBackground = when {
@@ -360,29 +493,51 @@ private fun LogRow(
     // selection the drag left in it (it began as an ordinary text drag) would
     // just be noise on top of the whole-line tint.
     LaunchedEffect(isSelected) {
-        if (isSelected && !fieldValue.selection.collapsed) {
-            fieldValue = fieldValue.copy(selection = TextRange(fieldValue.selection.max))
+        if (isSelected && !value.selection.collapsed) {
+            fieldValue = value.copy(selection = TextRange(value.selection.max))
         }
     }
     val transformation = remember(searchMatcher, highlightMatcher, isCurrentMatch) {
         LogHighlightTransformation(searchMatcher, highlightMatcher, isCurrentMatch)
     }
+    val editedMark = MaterialTheme.colorScheme.primary
+    val rowFocus = remember { FocusRequester() }
+    // Which visual line the caret is on decides whether Up/Down stay in the
+    // row (a wrapped or multi-line row) or leave it.
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    LaunchedEffect(caretRequest) {
+        val request = caretRequest ?: return@LaunchedEffect
+        fieldValue = TextFieldValue(text, TextRange(request.caretIn(text)))
+        runCatching { rowFocus.requestFocus() }
+        onCaretPlaced()
+    }
+
+    /** The caret's column within its own line (rows can hold several). */
+    fun columnOf(caret: Int): Int = caret - (text.lastIndexOf('\n', caret - 1) + 1)
 
     BasicTextField(
-        value = fieldValue,
+        value = value,
         onValueChange = { new ->
-            // readOnly guarantees the text is unchanged; only selection moves.
-            fieldValue = TextFieldValue(text, new.selection)
-            val sel = new.selection
+            // Line breaks stay (Enter, a paste), in one form only.
+            val typed = new.text.replace("\r\n", "\n").replace('\r', '\n')
+            val next = if (typed.length == new.text.length) new.copy(text = typed)
+            else TextFieldValue(typed, TextRange(new.selection.end.coerceAtMost(typed.length)))
+            fieldValue = next
+            if (typed != value.text) {
+                if (original != null) onEdit(typed, original)
+                return@BasicTextField
+            }
+            val sel = next.selection
             // Only a real (non-collapsed) selection updates the highlight. A
             // collapse is ignored here — clearing is handled on focus gain so
             // that the collapse caused by clicking the nav arrows is harmless.
             if (!sel.collapsed) {
-                val selected = text.substring(sel.min, sel.max).trim()
+                val selected = typed.substring(sel.min, sel.max).trim()
                 if (selected.length in MIN_HIGHLIGHT_LENGTH..MAX_HIGHLIGHT_LENGTH) onSelectionChange(lineIndex, selected)
             }
         },
-        readOnly = true,
+        readOnly = original == null,
         textStyle = TextStyle(
             color = color,
             fontFamily = FontFamily.Monospace,
@@ -391,18 +546,44 @@ private fun LogRow(
         ),
         cursorBrush = SolidColor(color),
         visualTransformation = transformation,
+        onTextLayout = { layout = it },
         modifier = Modifier
             .fillMaxWidth()
             .background(rowBackground)
+            // A bar down the left edge marks a line with unsaved changes.
+            .drawBehind { if (editedText != null) drawRect(editedMark, size = Size(2.dp.toPx(), size.height)) }
             .padding(horizontal = 8.dp, vertical = 1.dp)
+            .focusRequester(rowFocus)
+            // The edges of the row, where the caret moves on to another one.
+            // Only with a plain caret: Shift extends a selection, which stays
+            // in its row, and a selection is the field's to handle.
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown || original == null) return@onPreviewKeyEvent false
+                val sel = value.selection
+                val lines = layout
+                if (!sel.collapsed || e.isShiftPressed || e.isCtrlPressed || lines == null) return@onPreviewKeyEvent false
+                val caret = sel.start
+                when (e.key) {
+                    Key.DirectionUp -> (lines.getLineForOffset(caret) == 0).also { if (it) onLeaveUp(columnOf(caret)) }
+                    Key.DirectionDown -> (lines.getLineForOffset(caret) == lines.lineCount - 1)
+                        .also { if (it) onLeaveDown(columnOf(caret)) }
+                    Key.Backspace -> (caret == 0).also { if (it) onBackspaceAtStart() }
+                    Key.Delete -> (caret == value.text.length).also { if (it) onDeleteAtEnd() }
+                    else -> false
+                }
+            }
             .onFocusChanged { focus ->
+                if (focus.isFocused) onFocused()
                 // A plain click gives this row focus with a collapsed (empty)
                 // selection -> clear the highlight. Word-selection sets it via
                 // onValueChange afterwards. Arrow clicks don't focus any row.
-                if (focus.isFocused && fieldValue.selection.collapsed) onSelectionChange(lineIndex, "")
+                if (focus.isFocused && value.selection.collapsed) onSelectionChange(lineIndex, "")
             },
     )
 }
+
+/** Marks a line that couldn't be read: shown, but not editable. */
+private const val READ_ERROR = "<read error: "
 
 /**
  * Paints search matches (yellow) and occurrences of the user's current

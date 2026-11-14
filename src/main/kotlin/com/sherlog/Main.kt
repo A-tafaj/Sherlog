@@ -5,7 +5,10 @@ import androidx.compose.foundation.defaultScrollbarStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -29,8 +32,10 @@ import javax.swing.JOptionPane
 import javax.swing.UIManager
 
 fun main() = application {
+    // Closing the window first asks about tabs with unsaved changes (App).
+    var exitRequested by remember { mutableStateOf(false) }
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = { exitRequested = true },
         title = "Sherlog",
         // Taskbar/window icon while running. The installers get their icon
         // from icons/ instead (see build.gradle.kts) — jpackage needs
@@ -61,16 +66,25 @@ fun main() = application {
                     },
                     onExportClick = {
                         // Default to a name derived from the source so a re-export
-                        // doesn't collide with the file currently open.
-                        val source = workspace.active.index?.file
-                        chooseTextFileToSave(window, "Export Filtered Logs", LogFiles.exportName(source), source?.parentFile)
+                        // doesn't collide with the file currently open. An
+                        // Untitled tab's file is a temp file: neither its name
+                        // nor its folder is the user's.
+                        val tab = workspace.active
+                        val source = if (tab.isUntitled) File("${tab.displayName}.txt") else tab.index?.file
+                        val folder = if (tab.isUntitled) null else source?.parentFile
+                        chooseTextFileToSave(window, "Export Filtered Logs", LogFiles.exportName(source), folder)
                             ?.let(workspace::exportActive)
                     },
-                    onSaveAs = {
+                    exitRequested = exitRequested,
+                    onExit = ::exitApplication,
+                    onExitCancelled = { exitRequested = false },
+                    onSaveAs = { then ->
                         // Like any editor, Save As starts from the file's own name.
-                        val source = workspace.active.file
-                        chooseTextFileToSave(window, "Save As", source?.name ?: "untitled.txt", source?.parentFile)
-                            ?.let(workspace::saveActiveAs)
+                        val tab = workspace.active
+                        val name = if (tab.isUntitled) "${tab.displayName}.txt" else tab.file?.name ?: "untitled.txt"
+                        val folder = if (tab.isUntitled) null else tab.file?.parentFile
+                        val target = chooseTextFileToSave(window, "Save As", name, folder)
+                        if (target == null) then(false) else workspace.saveActiveAs(target, then)
                     },
                     onCopyText = { text ->
                         // Arrives from a worker thread (the lines are read off

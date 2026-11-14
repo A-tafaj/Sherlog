@@ -35,7 +35,8 @@ time-range fields are pre-filled with the first and last timestamp in the file.
 Every opened file gets its own tab across the top, as in Sublime Text:
 
 - **Open File…** lets you pick several files at once (Ctrl/Shift-click in the
-  dialog); **+** at the end of the tab strip does the same.
+  dialog). **+** at the end of the tab strip (or `Ctrl`+`N`) opens a new
+  empty file; Save asks where to put it.
 - **Open Folder…** opens every text file directly inside the chosen folder
   (subfolders are skipped), in name order.
 - Tabs shrink as more files open and the strip scrolls once they reach their
@@ -199,6 +200,15 @@ that leaves nothing, the status bar says `0 lines — N filters active`.
 **Clear Filters** resets everything (time range resets to the file's full
 span), including presets, the tag search box and the selection highlight.
 
+## Editing
+
+Click a line and type to change it, as in any editor: Enter splits a line,
+Backspace/Delete at a line's edge joins lines, ↑ ↓ move between lines, and
+`Ctrl`+`Z` / `Ctrl`+`Y` undo and redo. To remove lines, select them and press
+`Delete` (or right-click → Delete); `Ctrl`+`Shift`+`K` deletes the line with
+the caret. Changed lines get a bar on the left and the tab a ●. Nothing
+touches the file until you **Save**, and closing with unsaved changes asks.
+
 ## Saving and exporting
 
 - **File ▾ → Save** (`Ctrl`+`S`) keeps only the lines in view and removes the
@@ -219,6 +229,7 @@ span), including presets, the tag search box and the selection highlight.
 | `Enter` / `Shift`+`Enter` | In the search box: next / previous match |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the line selection, then the search, then the highlight |
+| `Ctrl`+`N` | New empty file |
 | `Ctrl`+`O` / `Ctrl`+`Shift`+`O` | Open files / a folder (adds tabs) |
 | `Ctrl`+`S` / `Ctrl`+`Shift`+`S` | Save / Save As |
 | `Ctrl`+`E` | Export Filtered |
@@ -226,6 +237,8 @@ span), including presets, the tag search box and the selection highlight.
 | `Ctrl`+`W` | Close the tab |
 | `Ctrl`+`A` | Select all lines in the view |
 | `Ctrl`+`B` | Hide / show the filter panel |
+| `Delete` / `Ctrl`+`Shift`+`K` | Delete the selected lines / the line with the caret |
+| `Ctrl`+`Z` / `Ctrl`+`Y` | Undo / redo an edit (in the log; a text box keeps its own) |
 | `Ctrl`+`+` / `Ctrl`+`-` / `Ctrl`+`0` | Zoom the log text in / out / reset (also `Ctrl`+wheel) |
 | `Ctrl`+`C` | Copy the selected lines, or the text selected within a line |
 
@@ -236,4 +249,3 @@ span), including presets, the tag search box and the selection highlight.
 - Text-based filters (search, exclude/keep) rescan the file, so on a very
   large file expect a few seconds with a progress bar; tag/PID/level/time
   filters are instant.
-- Lines can't be edited in the app yet: filter, then Save or Export.

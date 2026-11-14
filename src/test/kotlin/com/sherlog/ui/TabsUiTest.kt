@@ -132,10 +132,23 @@ class TabsUiTest {
     }
 
     @Test
-    fun `plus asks for more files`() = runComposeUiTest {
-        launchWithTwoTabs()
+    fun `a status message shows beside the line count, not instead of it`() = runComposeUiTest {
+        val ws = launchWithTwoTabs()
+        val count = ws.active.lineCountText!!
+        onNodeWithText(count).assertExists() // just the count, no message yet
+        onNodeWithText("Apply filters to all tabs").performClick()
+        waitForIdle()
+        onNodeWithText("$count · Filters applied to 1 other tab.").assertExists()
+    }
+
+    @Test
+    fun `plus opens a new untitled file`() = runComposeUiTest {
+        val ws = launchWithTwoTabs()
         onNodeWithText("+").performClick()
-        assertEquals(1, addClicks)
+        waitUntil(timeoutMillis = 10_000) { ws.active.isUntitled && !ws.active.isLoading }
+        assertEquals(3, ws.tabs.size)
+        assertEquals("Untitled", ws.active.displayName)
+        assertEquals(0, addClicks) // not the open dialog
     }
 
     @Test

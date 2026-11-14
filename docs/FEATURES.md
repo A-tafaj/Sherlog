@@ -15,7 +15,7 @@
 ## Tabs
 - Several files open at once, one tab each (Sublime-style): **File ▾ → Open
   File…** picks several files, **Open Folder…** opens every text file directly in
-  a folder, and **+** at the end of the tab strip adds more.
+  a folder, and **+** (or `Ctrl+N`) opens a new empty file.
 - A file that is already open isn't opened twice — its tab is shown instead.
 - Each tab keeps its own filters, search, highlight and scroll position.
 - **Apply filters to all tabs** copies the current tab's filters and search to
@@ -122,6 +122,13 @@
   presets, the tag search box and the selection highlight.
 - When a filter combination matches nothing, the status bar reports how many
   filters are active rather than showing a bare empty view.
+
+## Editing
+- Every line is editable, editor-style (Enter, joining lines, ↑ ↓, undo/redo);
+  Delete / `Ctrl+Shift+K` removes lines. Edits stay in memory (only changed
+  lines, so big files are fine) until Save.
+- Unsaved tabs show ●, changed lines a bar; closing or quitting asks first.
+- Search, Find and Export see edits right away; level, tag and colour update on Save.
 
 ## Save and export
 - **Save** keeps only the lines in view (asks first); **Save As** writes them

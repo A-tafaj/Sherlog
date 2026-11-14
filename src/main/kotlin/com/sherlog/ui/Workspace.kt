@@ -158,10 +158,24 @@ class Workspace(
         active.export(target)
     }
 
-    /** Save As for the active tab; refused onto a file another tab has open, like [exportActive]. */
-    fun saveActiveAs(target: File) {
-        if (openElsewhere(target, "save")) return
-        active.saveAs(target)
+    /**
+     * Save As for the active tab; refused onto a file another tab has open,
+     * like [exportActive]. [then] learns whether it was written.
+     */
+    fun saveActiveAs(target: File, then: (saved: Boolean) -> Unit = {}) {
+        if (openElsewhere(target, "save")) return then(false)
+        active.saveAs(target, then)
+    }
+
+    /** A new, empty Untitled tab (Ctrl+N, +), shown at once with the caret in it. */
+    fun newUntitled() {
+        val taken = tabs.mapNotNull { it.untitledName }.toSet()
+        val name = generateSequence(1) { it + 1 }
+            .map { if (it == 1) "Untitled" else "Untitled $it" }
+            .first { it !in taken }
+        val tab = tabs.firstOrNull { it.file == null } ?: newTab().also { tabs = tabs + it }
+        tab.openUntitled(name)
+        select(tab)
     }
 
     private fun openElsewhere(target: File, verb: String): Boolean {

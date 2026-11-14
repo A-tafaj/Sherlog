@@ -6,6 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -59,7 +62,13 @@ private val BADGE_MIN_WIDTH = 150.dp
  * The blank tab that stands in while nothing is open gets no chip.
  */
 @Composable
-fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
+fun TabStrip(
+    workspace: Workspace,
+    /** The + at the end: a new empty file. */
+    onNewFile: () -> Unit,
+    /** Closing goes through the caller, which asks about unsaved changes first. */
+    onCloseTab: (AppState) -> Unit = workspace::close,
+) {
     val chips = workspace.tabs.filter { it.file != null }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -86,7 +95,7 @@ fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
                             isDragging = tab === dragging,
                             dragOffset = if (tab === dragging) dragOffset else 0f,
                             onSelect = { workspace.select(tab) },
-                            onClose = { workspace.close(tab) },
+                            onClose = { onCloseTab(tab) },
                             onDragStart = { dragging = tab; dragOffset = 0f },
                             onDrag = { delta ->
                                 dragOffset += delta
@@ -123,21 +132,21 @@ fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
                 }
             }
         }
-        PlusButton(onAddFiles)
+        PlusButton(onNewFile)
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PlusButton(onAddFiles: () -> Unit) {
-    TooltipArea(tooltip = { TooltipText("Open files in new tabs (Ctrl+O)") }) {
+private fun PlusButton(onNewFile: () -> Unit) {
+    TooltipArea(tooltip = { TooltipText("New file (Ctrl+N)") }) {
         Text(
             "+",
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
-                .clickable(onClick = onAddFiles)
+                .clickable(onClick = onNewFile)
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         )
     }
@@ -159,7 +168,7 @@ private fun FileTab(
 ) {
     val file = tab.file ?: return
     val accent = MaterialTheme.colorScheme.primary
-    TooltipArea(tooltip = { TooltipText(file.absolutePath) }) {
+    TooltipArea(tooltip = { TooltipText(if (tab.isUntitled) "Not saved yet" else file.absolutePath) }) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -186,7 +195,7 @@ private fun FileTab(
                 .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Text(
-                file.name,
+                tab.displayName,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -204,12 +213,17 @@ private fun FileTab(
                 else -> null
             }
             if (badge != null) Text(badge, fontSize = 11.sp, color = accent, maxLines = 1)
+            // Unsaved changes show as ● where the × goes, as in Sublime; the
+            // × comes back under the mouse, and closing then asks first.
+            val closeHover = remember { MutableInteractionSource() }
+            val hovered by closeHover.collectIsHoveredAsState()
             Text(
-                "×",
+                if (tab.isDirty && !hovered) "●" else "×",
                 fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (tab.isDirty) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
+                    .hoverable(closeHover)
                     .clickable(onClick = onClose)
                     .padding(horizontal = 6.dp),
             )

@@ -26,10 +26,16 @@ import java.nio.file.StandardCopyOption
  */
 object LogExporter {
 
+    /**
+     * [edits] is unsaved text by file line: those lines are written with that
+     * text (as UTF-8) and their own line ending, the rest copied as above. An
+     * edit holding line breaks (`\n`) writes several lines.
+     */
     suspend fun export(
         index: LogIndex,
         lines: IntArray,
         target: File,
+        edits: Map<Int, String> = emptyMap(),
         onProgress: (Long, Long) -> Unit = { _, _ -> },
     ) {
         val ctx = currentCoroutineContext()
@@ -62,7 +68,15 @@ object LogExporter {
                             read += r
                         }
                         pos += read
-                        if (index.encoding == LogEncoding.UTF_8) {
+                        val edited = if (edits.isEmpty()) null else edits[i]
+                        if (edited != null) {
+                            // Line breaks typed into the line (Enter, a paste)
+                            // become real lines, ending like this one does.
+                            val crlf = String(buffer, 0, read, index.encoding.charset).endsWith("\r\n")
+                            val text = if (crlf) edited.replace("\n", "\r\n") else edited
+                            out.write(text.toByteArray(Charsets.UTF_8))
+                            out.write(if (crlf) CRLF else LF)
+                        } else if (index.encoding == LogEncoding.UTF_8) {
                             out.write(buffer, 0, read)
                             // Guarantee a terminator when the source line lacked one (last line).
                             if (read == 0 || buffer[read - 1] != '\n'.code.toByte()) out.write('\n'.code)
@@ -85,4 +99,7 @@ object LogExporter {
         }
         onProgress(total, total)
     }
+
+    private val CRLF = byteArrayOf('\r'.code.toByte(), '\n'.code.toByte())
+    private val LF = byteArrayOf('\n'.code.toByte())
 }

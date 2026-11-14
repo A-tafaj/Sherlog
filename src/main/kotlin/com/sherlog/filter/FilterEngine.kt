@@ -29,9 +29,15 @@ object FilterEngine {
         fun matches(line: String): Boolean = regex?.containsMatchIn(line) ?: true
     }
 
+    /**
+     * [edits] is the tab's unsaved text by file line: the text filters test
+     * that instead of what the file says. Tag, level, PID and time still come
+     * from the index, which only a Save brings up to date.
+     */
     suspend fun apply(
         index: LogIndex,
         state: FilterState,
+        edits: Map<Int, String> = emptyMap(),
         onProgress: (Long, Long) -> Unit = { _, _ -> },
     ): IntArray {
         val ctx = currentCoroutineContext()
@@ -119,7 +125,8 @@ object FilterEngine {
                     read += r
                 }
                 pos += read
-                val line = index.encoding.decodeLine(bytes, 0, read)
+                // Still read past the file's bytes, so the stream stays in step.
+                val line = (if (edits.isEmpty()) null else edits[i]) ?: index.encoding.decodeLine(bytes, 0, read)
 
                 if (excludes.any { line.contains(it, ignoreCase = true) }) continue
                 if (includes.isNotEmpty() && includes.none { line.contains(it, ignoreCase = true) }) continue

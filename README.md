@@ -5,13 +5,12 @@ far too big for a text editor, then filter it down by tag, PID, level, time and
 text instead of grinding through `findstr` and regex passes by hand.
 Kotlin + Compose Desktop.
 
-![Sherlog with three logs in tabs, searching all of them for CMD_ENABLE_RSSI_POLL](docs/images/screenshot.png)
+![Sherlog with three logs in tabs: one narrowed by tags and time and searched for wlan, all three searched for connected](docs/images/screenshot.png)
 
-A 1,010,986-line dump narrowed to **2,104 lines** by muted tags, a time range
-and an `rssi` search, with every `lastModified` in view highlighted and counted
-(*1,942 lines*, bottom right). `CMD_ENABLE_RSSI_POLL` is searched across all
-three open logs at once — **905 matches**, grouped by file in the panel below;
-clicking one jumps to that line in its own tab.
+A 1,010,986-line dump narrowed to **37,026 lines** by hidden tags and a time
+range. `wlan` is found in place: highlighted, counted bottom right, and marked
+beside the scrollbar. `connected` is searched across all three open logs at
+once — **1,687 matches**, grouped by file in the panel below.
 
 Docs: [User Guide](docs/USER_GUIDE.md) · [Features](docs/FEATURES.md) ·
 [Why this tool](docs/WHY_THIS_TOOL.md).
@@ -72,7 +71,7 @@ takes about a minute — see [Run](#run) below.
   hits grouped by file; click one to jump to it.
 - Debug presets: Network / Crash / Video — **combinable**, so Crash + Network
   shows both at once.
-- Save the filtered view over the file, Save As a new one, or export a copy (streaming).
+- Edit lines in place, editor-style, or start a new file (`Ctrl+N`); Save, Save As or export a copy.
 - Zoom the log text and fold the filter panel away (`Ctrl+B`) for more room.
 - **Tabs**, Sublime-style: open several files (or a whole folder) at once,
   each with its own filters, and apply one tab's filters to all of them.
