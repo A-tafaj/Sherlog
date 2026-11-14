@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.sherlog"
-version = "1.1.0"
+version = "2.0.0"
 
 repositories {
     mavenCentral()
@@ -44,7 +44,7 @@ compose.desktop {
             // OS (see .github/workflows/release.yml).
             targetFormats(TargetFormat.Msi, TargetFormat.Dmg, TargetFormat.Deb)
             packageName = "Sherlog"
-            packageVersion = "1.1.0"
+            packageVersion = "2.0.0"
 
             // Generated from docs/images/logo.svg; jpackage wants a different
             // container per platform.

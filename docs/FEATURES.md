@@ -148,11 +148,9 @@
 ## Engineering
 - All heavy work on background coroutines: UI never freezes; progress +
   Cancel for indexing, text filtering and export.
-- 28 unit tests: parser (format edge cases, leap day, tag-with-spaces),
-  indexer (CRLF, buffer-spanning lines, offset fidelity), filter engine
-  (every filter type, combinations, both tag modes), highlight counter,
-  export byte-exactness; plus an opt-in large-file benchmark
-  (`SMOKE_FILE` env var).
+- 199 tests: parser, indexer, filter engine, export, editing and saving, plus
+  UI tests that drive the real app headlessly; and an opt-in large-file
+  benchmark (`SMOKE_FILE` env var).
 
 ## Not yet built (planned/deferred)
 - Automatic issue detection (network-failure timelines) — spec §14.
