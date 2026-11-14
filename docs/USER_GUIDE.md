@@ -171,6 +171,8 @@ searches too — and always start from where you are, never back at the top:
   match on screen (or the next one below it), ▲ the last one (or the next one
   above).
 
+Ticks beside the scrollbar show where every match is; click one to jump there.
+
 The view stays still while the next match is already visible, and only
 scrolls when it isn't. Past the last match, ▼ wraps to the first.
 

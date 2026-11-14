@@ -694,6 +694,13 @@ class AppState(
     fun prevMatch(visible: IntRange): Int? =
         moveToMatch(MatchNavigator.prev(highlightMatches, currentMatchIndex, visible))
 
+    /**
+     * Makes match [matchIndex] the current one (a clicked scrollbar marker),
+     * so F3/Enter carry on from it. Returns its position, like [nextMatch].
+     */
+    fun goToMatch(matchIndex: Int): Int? =
+        if (matchIndex in highlightMatches.indices) moveToMatch(matchIndex) else null
+
     private fun moveToMatch(matchIndex: Int): Int? {
         if (matchIndex < 0 || highlightCounting) return null
         currentMatchIndex = matchIndex

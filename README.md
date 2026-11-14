@@ -67,6 +67,7 @@ takes about a minute — see [Run](#run) below.
   exclude-substrings, keep-substrings. All combinable. Tags and PIDs each
   toggle between **show-only** and **hide**.
 - Search: case-insensitive, optional regex, highlighted matches, match count.
+- Match markers beside the scrollbar show where the hits are; click one to jump.
 - **Find in all files** — `Ctrl+Shift+F` searches every open tab and lists the
   hits grouped by file; click one to jump to it.
 - Debug presets: Network / Crash / Video — **combinable**, so Crash + Network
