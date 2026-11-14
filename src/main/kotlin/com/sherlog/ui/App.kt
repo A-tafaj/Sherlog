@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +28,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FilterAltOff
+import androidx.compose.material.icons.outlined.ArrowOutward
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,6 +89,8 @@ fun App(
     onExportClick: () -> Unit,
     /** Puts text on the system clipboard (a platform concern, like the file dialogs). */
     onCopyText: (String) -> Unit,
+    /** Asks where to Save As (a native dialog), then saves there. Save itself needs no dialog. */
+    onSaveAs: () -> Unit = {},
 ) {
     // Everything below shows the active tab.
     val state = workspace.active
@@ -116,7 +123,17 @@ fun App(
 
     // Folding the filter panel away disposes a field that may hold focus, and
     // with nothing focused no shortcut fires (not even Ctrl+B to undo it).
-    LaunchedEffect(workspace.prefs.filterPanelCollapsed) {
+    // Save asks first when it would remove lines (it always does, until lines
+    // can be edited), naming how many: the file loses them for good.
+    var confirmingSave by remember(state) { mutableStateOf(false) }
+    fun requestSave() {
+        if (state.canSave) confirmingSave = true
+    }
+
+    // Folding the filter panel away disposes a field that may hold focus, and
+    // with nothing focused no shortcut fires (not even Ctrl+B to undo it). A
+    // closed dialog can leave focus nowhere the same way.
+    LaunchedEffect(workspace.prefs.filterPanelCollapsed, confirmingSave) {
         withFrameNanos { }
         if (!focusInside) runCatching { rootFocus.requestFocus() }
     }
@@ -185,7 +202,7 @@ fun App(
 
     fun onShortcut(e: KeyEvent): Boolean {
         if (e.type != KeyEventType.KeyDown) return false
-        val exportEnabled = state.index != null && state.filteredLines.isNotEmpty() && !state.isBusy
+        val exportEnabled = state.canWriteView
         return when {
             // With whole lines selected, Ctrl+C is theirs; otherwise it falls
             // through to the focused text field's own copy.
@@ -214,7 +231,11 @@ fun App(
             e.isCtrlPressed && e.key == Key.F -> { state.useSelectionAsSearch(); searchFocus.requestFocus(); true }
             // Enter is the search box's own: elsewhere it belongs to whatever has focus.
             searchFocused && e.key == Key.Enter -> { navigateMatch(forward = !e.isShiftPressed); true }
+            // The Shift variants first: the plain ones don't look at Shift.
+            e.isCtrlPressed && e.isShiftPressed && e.key == Key.O -> { onOpenFolder(); true }
             e.isCtrlPressed && e.key == Key.O -> { onOpenFiles(); true }
+            e.isCtrlPressed && e.isShiftPressed && e.key == Key.S -> { if (exportEnabled) onSaveAs(); true }
+            e.isCtrlPressed && e.key == Key.S -> { requestSave(); true }
             e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
             e.isCtrlPressed && e.key == Key.W -> { if (state.file != null) workspace.close(state); true }
             e.isCtrlPressed && e.key == Key.Tab -> { workspace.selectNext(if (e.isShiftPressed) -1 else 1); true }
@@ -250,7 +271,22 @@ fun App(
             // the tag list's scroll, the slider) belongs to one tab rather
             // than leaking into the next.
             key(state) {
-                TopBar(workspace, onOpenFiles, onOpenFolder, onExportClick)
+                TopBar(
+                    workspace,
+                    onOpenFiles = onOpenFiles,
+                    onOpenFolder = onOpenFolder,
+                    onSave = { requestSave() },
+                    onSaveAs = onSaveAs,
+                    onExportClick = onExportClick,
+                )
+                if (confirmingSave) {
+                    SaveConfirmation(
+                        state,
+                        onSave = { confirmingSave = false; state.save() },
+                        onSaveAs = { confirmingSave = false; onSaveAs() },
+                        onCancel = { confirmingSave = false },
+                    )
+                }
                 HorizontalDivider()
                 Row(Modifier.weight(1f)) {
                     // Never more than ~half the window, so the log keeps the room.
@@ -349,6 +385,8 @@ private fun TopBar(
     workspace: Workspace,
     onOpenFiles: () -> Unit,
     onOpenFolder: () -> Unit,
+    onSave: () -> Unit,
+    onSaveAs: () -> Unit,
     onExportClick: () -> Unit,
 ) {
     val state = workspace.active
@@ -360,13 +398,7 @@ private fun TopBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
-            // Opening adds tabs, so it never has to wait for this one to be idle.
-            Button(onClick = onOpenFiles, modifier = CompactButton, contentPadding = CompactButtonPadding) {
-                BarLabel("Open Log")
-            }
-            OutlinedButton(onClick = onOpenFolder, modifier = CompactButton, contentPadding = CompactButtonPadding) {
-                BarLabel("Open Folder")
-            }
+            FileMenu(state, onOpenFiles, onOpenFolder, onSave, onSaveAs)
 
             var presetMenuOpen by remember { mutableStateOf(false) }
             val presetCount = state.selectedPresets.size
@@ -447,14 +479,100 @@ private fun TopBar(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(
-                onClick = onExportClick,
-                enabled = state.index != null && state.filteredLines.isNotEmpty() && !state.isBusy,
-                modifier = CompactButton,
-                contentPadding = CompactButtonPadding,
-            ) { BarLabel("Export Filtered") }
+            TooltipArea(tooltip = { TooltipText("Export Filtered — save a copy of the lines in view (Ctrl+E)") }) {
+                IconButton(onClick = onExportClick, enabled = state.canWriteView, modifier = Modifier.size(28.dp)) {
+                    ExportIcon()
+                }
+            }
         }
     }
+}
+
+/**
+ * One menu for everything about files, Sublime-style. Opening adds tabs, so
+ * it never has to wait for this one to be idle; Save and Save As write this
+ * tab's view, so they do.
+ */
+@Composable
+private fun FileMenu(
+    state: AppState,
+    onOpenFiles: () -> Unit,
+    onOpenFolder: () -> Unit,
+    onSave: () -> Unit,
+    onSaveAs: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Button(onClick = { open = true }, modifier = CompactButton, contentPadding = CompactButtonPadding) {
+            BarLabel("File ▾")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            // Closed before acting: the actions open native dialogs.
+            FileMenuItem("Open File…", "Ctrl+O") { open = false; onOpenFiles() }
+            FileMenuItem("Open Folder…", "Ctrl+Shift+O") { open = false; onOpenFolder() }
+            HorizontalDivider()
+            FileMenuItem("Save", "Ctrl+S", enabled = state.canSave) { open = false; onSave() }
+            FileMenuItem("Save As…", "Ctrl+Shift+S", enabled = state.canWriteView) { open = false; onSaveAs() }
+        }
+    }
+}
+
+@Composable
+private fun FileMenuItem(label: String, shortcut: String, enabled: Boolean = true, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label, fontSize = 13.sp) },
+        trailingIcon = {
+            Text(shortcut, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        },
+        enabled = enabled,
+        onClick = onClick,
+    )
+}
+
+/**
+ * A disk with an arrow out of it: Export saves a *copy*. A plain disk would
+ * read as Save, which is a different thing (it rewrites this file).
+ */
+@Composable
+private fun ExportIcon() {
+    Box(Modifier.size(20.dp)) {
+        Icon(
+            Icons.Outlined.Save,
+            contentDescription = "Export Filtered",
+            modifier = Modifier.size(17.dp).align(Alignment.BottomStart),
+        )
+        Icon(
+            Icons.Outlined.ArrowOutward,
+            contentDescription = null,
+            modifier = Modifier.size(10.dp).align(Alignment.TopEnd),
+        )
+    }
+}
+
+/**
+ * Save keeps only the lines in view, so the hidden ones leave the file for
+ * good. Says how many, and offers Save As to keep the original intact.
+ */
+@Composable
+private fun SaveConfirmation(state: AppState, onSave: () -> Unit, onSaveAs: () -> Unit, onCancel: () -> Unit) {
+    val hidden = state.hiddenLineCount
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Save ${state.file?.name.orEmpty()}?") },
+        text = {
+            Text(
+                "Only the %,d lines in view are kept. The %,d hidden line%s will be removed from the file for good."
+                    .format(state.filteredLines.size, hidden, if (hidden == 1) "" else "s"),
+            )
+        },
+        confirmButton = { TextButton(onClick = onSave) { Text("Save") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onCancel) { Text("Cancel") }
+                TextButton(onClick = onSaveAs) { Text("Save As…") }
+            }
+        },
+    )
 }
 
 private val CompactButton = Modifier.height(28.dp)

@@ -502,11 +502,38 @@ class AppState(
             return n
         }
 
-    fun export(target: File) {
+    /** Lines the filters hide, which a [save] would remove from the file. */
+    val hiddenLineCount: Int get() = (index?.lineCount ?: 0) - filteredLines.size
+
+    /**
+     * Whether there is anything to write: lines in view, nothing running.
+     * An empty view is never written — it would only produce an empty file.
+     */
+    val canWriteView: Boolean get() = index != null && filteredLines.isNotEmpty() && !isBusy
+
+    /** Save only changes the file when the filters hide something. */
+    val canSave: Boolean get() = canWriteView && hiddenLineCount > 0
+
+    /** Export Filtered: writes the view to [target] as a copy; this tab stays on its file. */
+    fun export(target: File) = writeView(target, showTarget = false)
+
+    /** Save: writes the view over this tab's own file (see [saveAs]). */
+    fun save() {
+        file?.let(::saveAs)
+    }
+
+    /**
+     * Save As: writes the view to [target], and this tab then shows [target],
+     * re-indexed. Lines and tags the filters hid are gone from it, so the
+     * filters are reset: they are now part of the file.
+     */
+    fun saveAs(target: File) = writeView(target, showTarget = true)
+
+    private fun writeView(target: File, showTarget: Boolean) {
         val idx = index ?: return
         val lines = filteredLines
         cancelWork()
-        // Exporting onto the currently open file is allowed (the exporter
+        // Writing onto the currently open file is allowed (the exporter
         // writes via a temp file), but our own read handle must be released
         // first or the final replace fails on Windows — and afterwards the
         // on-disk content no longer matches the index, so re-open it.
@@ -515,20 +542,26 @@ class AppState(
             provider?.close()
             provider = null
         }
+        val verb = if (showTarget) "Saving" else "Exporting"
         workJob = scope.launch(Dispatchers.IO) {
             try {
                 LogExporter.export(idx, lines, target) { done, total ->
                     progress = if (total > 0) done.toFloat() / total else 1f
-                    progressLabel = "Exporting: %,d / %,d lines".format(done, total)
+                    progressLabel = "$verb: %,d / %,d lines".format(done, total)
                 }
-                statusMessage = "Exported %,d lines to ${target.name}".format(lines.size)
-                if (ontoOpenFile) openFile(target)
+                if (showTarget) {
+                    clearFilters()
+                    openFile(target)
+                } else {
+                    statusMessage = "Exported %,d lines to ${target.name}".format(lines.size)
+                    if (ontoOpenFile) openFile(target)
+                }
             } catch (e: CancellationException) {
                 if (ontoOpenFile) openFile(idx.file) // restore the released provider
                 throw e
             } catch (e: Exception) {
                 if (isActive) {
-                    statusMessage = "Export failed: ${e.message}"
+                    statusMessage = "${if (showTarget) "Save" else "Export"} failed: ${e.message}"
                     if (ontoOpenFile) openFile(idx.file) // restore the released provider
                 }
             } finally {

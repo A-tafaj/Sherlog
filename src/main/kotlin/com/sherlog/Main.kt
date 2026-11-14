@@ -62,9 +62,15 @@ fun main() = application {
                     onExportClick = {
                         // Default to a name derived from the source so a re-export
                         // doesn't collide with the file currently open.
-                        val suggested = LogFiles.exportName(workspace.active.index?.file)
-                        chooseTextFileToSave(window, "Export Filtered Logs", suggested)
+                        val source = workspace.active.index?.file
+                        chooseTextFileToSave(window, "Export Filtered Logs", LogFiles.exportName(source), source?.parentFile)
                             ?.let(workspace::exportActive)
+                    },
+                    onSaveAs = {
+                        // Like any editor, Save As starts from the file's own name.
+                        val source = workspace.active.file
+                        chooseTextFileToSave(window, "Save As", source?.name ?: "untitled.txt", source?.parentFile)
+                            ?.let(workspace::saveActiveAs)
                     },
                     onCopyText = { text ->
                         // Arrives from a worker thread (the lines are read off
@@ -98,8 +104,9 @@ private fun chooseLogFiles(parent: Frame): List<File> {
  * replacing the name as typed, not the one with `.txt` added, so that one
  * is confirmed here.
  */
-private fun chooseTextFileToSave(parent: Frame, title: String, suggestedName: String): File? {
+private fun chooseTextFileToSave(parent: Frame, title: String, suggestedName: String, startDir: File?): File? {
     val dialog = FileDialog(parent, title, FileDialog.SAVE)
+    startDir?.let { dialog.directory = it.absolutePath }
     dialog.file = suggestedName
     dialog.isVisible = true
     val dir = dialog.directory ?: return null

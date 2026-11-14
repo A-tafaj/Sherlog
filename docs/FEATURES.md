@@ -13,8 +13,8 @@
 - Indexing shows progress and is cancellable. 147 MB / 2M lines ≈ 0.6 s.
 
 ## Tabs
-- Several files open at once, one tab each (Sublime-style): **Open Log**
-  picks several files, **Open Folder** opens every text file directly in
+- Several files open at once, one tab each (Sublime-style): **File ▾ → Open
+  File…** picks several files, **Open Folder…** opens every text file directly in
   a folder, and **+** at the end of the tab strip adds more.
 - A file that is already open isn't opened twice — its tab is shown instead.
 - Each tab keeps its own filters, search, highlight and scroll position.
@@ -83,7 +83,7 @@
 - `Ctrl+F` takes the text selected in a line into the search box (the mode is
   left as it is); `Enter`/`Shift+Enter` there step to the nearest match.
 - Shortcuts: `Ctrl+F` search, `F3`/`Shift+F3` next/previous, `Esc` clear,
-  `Ctrl+O` open, `Ctrl+E` export, `Ctrl+Tab` / `Ctrl+W` next / close tab,
+  `Ctrl+O` / `Ctrl+Shift+O` open files / folder, `Ctrl+S` / `Ctrl+Shift+S` save / save as, `Ctrl+E` export, `Ctrl+Tab` / `Ctrl+W` next / close tab,
   `Ctrl+A` select all lines, `Ctrl++` / `Ctrl+-` / `Ctrl+0` (or `Ctrl`+wheel) zoom,
   `Ctrl+B` hide / show filters.
 
@@ -122,8 +122,10 @@
 - When a filter combination matches nothing, the status bar reports how many
   filters are active rather than showing a bare empty view.
 
-## Export
-- Writes the currently filtered lines to a new `.txt`/`.log` file, streaming
+## Save and export
+- **Save** keeps only the lines in view (asks first); **Save As** writes them
+  to a new file and switches to it. Filters reset afterwards.
+- **Export** writes the currently filtered lines to a new `.txt`/`.log` file, streaming
   (266 K lines ≈ 0.1 s). Byte-exact copies of the original lines; a UTF-16
   source is written out as UTF-8.
 - Default name `<source>_filtered.txt`; a name typed without an extension gets `.txt`.
