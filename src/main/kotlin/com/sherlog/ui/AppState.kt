@@ -203,8 +203,17 @@ class AppState(
         private set
     var progressLabel by mutableStateOf("")
         private set
+    /** The latest message ("Copied …", "Filters applied …"); empty when there's none. */
     var statusMessage by mutableStateOf("Open a log file or a folder to begin.")
         private set
+
+    /**
+     * "1,234 / 5,678 lines": what the view shows of the file, which the status
+     * bar keeps in front of [statusMessage] at all times. Deleted lines no
+     * longer count as the file's. Null until a file is loaded.
+     */
+    val lineCountText: String?
+        get() = index?.let { "%,d / %,d lines".format(filteredLines.size, it.lineCount - deletedCount) }
 
     /**
      * A heads-up the status bar keeps showing beside [statusMessage], which
@@ -227,10 +236,41 @@ class AppState(
 
     val isBusy: Boolean get() = progress != null
 
-    fun openFile(file: File) {
+    /**
+     * Set for an Untitled tab ("Untitled 2"): a new file with no place yet. It
+     * lives in a temp file holding one empty line — so it is an ordinary tab
+     * to everything else, edits and undo included — until Save As gives it a
+     * real one. The temp file goes when the tab moves on or closes.
+     */
+    var untitledName by mutableStateOf<String?>(null)
+        private set
+    val isUntitled: Boolean get() = untitledName != null
+
+    /** What the tab is called: the file's name, or its Untitled name. */
+    val displayName: String get() = untitledName ?: file?.name.orEmpty()
+
+    /** Set when the caret should go straight into the first line (a new Untitled tab). */
+    var wantsCaret by mutableStateOf(false)
+
+    /** Makes this an empty Untitled tab called [name]. */
+    fun openUntitled(name: String) {
+        val temp = File.createTempFile("sherlog-untitled-", ".txt").apply {
+            writeText("\n") // one empty line to type into
+            deleteOnExit()
+        }
+        openFile(temp, untitled = name)
+        wantsCaret = true
+    }
+
+    /** [untitled]: the name for an Untitled tab's temp file; null for a real file. */
+    fun openFile(file: File, untitled: String? = null) {
+        // An Untitled tab's temp file is done with once the tab shows another.
+        val leftTemp = this.file.takeIf { untitledName != null && it != file }
+        untitledName = untitled
         cancelWork()
         applyJob?.cancel()
         provider?.close()
+        leftTemp?.delete()
         index = null
         provider = null
         filteredLines = IntArray(0)
@@ -253,7 +293,7 @@ class AppState(
         redoStack.clear()
         this.file = file
         isLoading = true
-        statusMessage = "Indexing ${file.name}…"
+        statusMessage = "Indexing $displayName…"
         // A superseded load's cleanup runs late, after the next load has
         // begun; the generation keeps it from clearing that one's isLoading.
         val generation = ++loadGeneration
@@ -274,16 +314,16 @@ class AppState(
                 // user only edits the boundary they care about.
                 timeFromText = idx.firstTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
                 timeToText = idx.lastTimestampMs?.let(LogcatLineParser::formatTimestamp) ?: ""
-                statusMessage = "%,d lines · %s".format(idx.lineCount, file.name)
                 // Every parsed line has a tag (maybe an empty one), so no tags
                 // means no line was logcat. Without saying so, a plain text
-                // file looks like a log that failed to colour.
-                if (idx.lineCount > 0 && idx.tags.isEmpty()) {
+                // file looks like a log that failed to colour. (A new file
+                // is plain text on purpose.)
+                if (idx.lineCount > 0 && idx.tags.isEmpty() && untitled == null) {
                     addNotice("No logcat lines found — showing it as plain text")
                 }
                 runFilter(idx)
             } catch (e: Exception) {
-                if (isActive) statusMessage = "Failed to open ${file.name}: ${e.message}"
+                if (isActive) statusMessage = "Failed to open $displayName: ${e.message}"
             } finally {
                 progress = null
                 if (generation == loadGeneration) isLoading = false
@@ -428,6 +468,7 @@ class AppState(
         highlightJob?.cancel()
         provider?.close()
         provider = null
+        if (isUntitled) file?.delete()
     }
 
     /** Re-applies filters after a short debounce; called on every filter-input change. */
@@ -785,10 +826,11 @@ class AppState(
             provider = null
         }
         val deleted = deletedLines
+        val untitled = untitledName
         // The file is unchanged when writing fails, so reopening it to get the
         // released provider back must not cost the user their edits.
         fun reopenKeepingEdits() {
-            openFile(idx.file)
+            openFile(idx.file, untitled)
             editedLines.putAll(edits)
             deletedLines = deleted
             deletedCount = deleted.cardinality()
@@ -919,10 +961,13 @@ class AppState(
         val needle = highlightNeedle
         val isRegex = highlightIsRegex
         if (idx == null || needle.isEmpty()) {
-            highlightCount = null
-            highlightCounting = false
+            // The matches go first: whoever sees the count gone and counting
+            // done (navigation, a test on another thread) must not still find
+            // the old matches behind it.
             highlightMatches = IntArray(0)
             currentMatchIndex = -1
+            highlightCount = null
+            highlightCounting = false
             return
         }
         if (!keepMatches) highlightCounting = true
@@ -1024,6 +1069,15 @@ class AppState(
         val result = if (deleted.isEmpty) found else IntList(found.size).apply {
             for (line in found) if (!deleted.get(line)) add(line)
         }.toArray()
+        // The line count is the status bar's own ([lineCountText]); a message
+        // from before this view ("Copied …", "Filters applied …") is stale now.
+        // Written before the view swaps, so whoever sees the new view sees
+        // the status that goes with it.
+        val active = activeFilterCount
+        statusMessage = if (result.isEmpty() && active > 0) {
+            // An empty view is otherwise indistinguishable from a broken one.
+            "%d filter%s active".format(active, if (active == 1) "" else "s")
+        } else ""
         // The matches index the old view until the recount below lands; mark
         // them stale *before* swapping the view so navigation can't use them.
         if (highlightNeedle.isNotEmpty()) highlightCounting = true
@@ -1032,14 +1086,6 @@ class AppState(
         selectionAnchor = -1
         filteredLines = result
         progress = null
-        val active = activeFilterCount
-        statusMessage = if (result.isEmpty() && active > 0) {
-            // An empty view is otherwise indistinguishable from a broken one.
-            "0 lines — %d filter%s active".format(active, if (active == 1) "" else "s")
-        } else buildString {
-            append("%,d / %,d lines".format(result.size, idx.lineCount - deleted.cardinality()))
-            if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
-        }
         // The highlight count is relative to the filtered set; recount. Also
         // with an empty needle, which clears the matches: Clear Filters can
         // empty a Find query without passing through a recount, and matches

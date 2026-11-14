@@ -64,7 +64,8 @@ private val BADGE_MIN_WIDTH = 150.dp
 @Composable
 fun TabStrip(
     workspace: Workspace,
-    onAddFiles: () -> Unit,
+    /** The + at the end: a new empty file. */
+    onNewFile: () -> Unit,
     /** Closing goes through the caller, which asks about unsaved changes first. */
     onCloseTab: (AppState) -> Unit = workspace::close,
 ) {
@@ -131,21 +132,21 @@ fun TabStrip(
                 }
             }
         }
-        PlusButton(onAddFiles)
+        PlusButton(onNewFile)
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PlusButton(onAddFiles: () -> Unit) {
-    TooltipArea(tooltip = { TooltipText("Open files in new tabs (Ctrl+O)") }) {
+private fun PlusButton(onNewFile: () -> Unit) {
+    TooltipArea(tooltip = { TooltipText("New file (Ctrl+N)") }) {
         Text(
             "+",
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier
                 .clip(RoundedCornerShape(4.dp))
-                .clickable(onClick = onAddFiles)
+                .clickable(onClick = onNewFile)
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         )
     }
@@ -167,7 +168,7 @@ private fun FileTab(
 ) {
     val file = tab.file ?: return
     val accent = MaterialTheme.colorScheme.primary
-    TooltipArea(tooltip = { TooltipText(file.absolutePath) }) {
+    TooltipArea(tooltip = { TooltipText(if (tab.isUntitled) "Not saved yet" else file.absolutePath) }) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -194,7 +195,7 @@ private fun FileTab(
                 .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Text(
-                file.name,
+                tab.displayName,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

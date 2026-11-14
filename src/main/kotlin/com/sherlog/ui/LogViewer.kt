@@ -129,6 +129,9 @@ fun LogViewer(
     onJoinNext: (position: Int) -> Boolean,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    /** Put the caret in the first line now (a new Untitled tab), then say so. */
+    focusFirstRow: Boolean,
+    onFirstRowFocused: () -> Unit,
     listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
@@ -155,6 +158,12 @@ fun LogViewer(
     // a join). Rows are text fields of their own, so the row at that position
     // takes focus and places the caret itself once it's composed.
     var caretRequest by remember { mutableStateOf<CaretRequest?>(null) }
+    LaunchedEffect(focusFirstRow, filteredLines.isNotEmpty()) {
+        if (focusFirstRow && filteredLines.isNotEmpty()) {
+            caretRequest = CaretRequest(0, offset = 0)
+            onFirstRowFocused()
+        }
+    }
 
     /** Moves the caret into the row at [request]'s position, scrolling it into view first. */
     fun moveCaret(request: CaretRequest) {

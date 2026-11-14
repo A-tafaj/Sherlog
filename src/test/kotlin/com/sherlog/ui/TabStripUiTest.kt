@@ -93,7 +93,9 @@ class TabStripUiTest {
         onAllNodesWithText("log_13.txt")[0].assertIsDisplayed()
 
         onNodeWithText("+").performClick()
-        assertEquals(1, addClicks)
+        waitUntil(timeoutMillis = 10_000) { ws.active.isUntitled && !ws.active.isLoading }
+        assertEquals(15, ws.tabs.size)
+        assertEquals(0, addClicks) // a new file, not the open dialog
     }
 
     private fun ComposeUiTest.press(key: Key, ctrl: Boolean = false) {

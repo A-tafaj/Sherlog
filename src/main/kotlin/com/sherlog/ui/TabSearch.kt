@@ -138,7 +138,7 @@ class TabSearch(private val scope: CoroutineScope) {
                 val idx = tab.index ?: continue
                 val provider = tab.provider ?: continue
                 val lines = tab.filteredLines
-                progressLabel = tab.file?.name.orEmpty()
+                progressLabel = tab.displayName
                 val hits = try {
                     HighlightCounter.matches(idx, lines, needle, isRegex, edits.getValue(tab))
                 } catch (e: CancellationException) {
@@ -152,7 +152,7 @@ class TabSearch(private val scope: CoroutineScope) {
                     val text = edits.getValue(tab)[line] ?: runCatching { provider.line(line) }.getOrDefault("")
                     Hit(position, line, text)
                 }
-                found += FileResult(tab, tab.file?.name.orEmpty(), hits.size, previews)
+                found += FileResult(tab, tab.displayName, hits.size, previews)
                 results = found.toList()
             }
             if (generation == this@TabSearch.generation) {

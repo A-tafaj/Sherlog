@@ -371,4 +371,49 @@ class WorkspaceTest {
         assertFalse(tab.canWriteView)
         assertFalse(tab.canSave)
     }
+
+    @Test
+    fun `new files are untitled, numbered, and have one empty line to type into`() {
+        val ws = Workspace(scope)
+        ws.newUntitled()
+        ws.newUntitled()
+        ws.awaitLoaded()
+        assertEquals(listOf("Untitled", "Untitled 2"), ws.tabs.map { it.displayName })
+        assertSame(ws.tabs[1], ws.active)
+        assertEquals(1, ws.active.index!!.lineCount)
+        assertNull(ws.active.notice) // plain text on purpose: no "not logcat" note
+        assertFalse(ws.active.isDirty)
+        ws.close(ws.tabs[0])
+        ws.newUntitled()
+        assertEquals("Untitled", ws.active.displayName) // the free name is reused
+    }
+
+    @Test
+    fun `save as gives an untitled file its place, and its temp file goes`() {
+        val ws = Workspace(scope)
+        ws.newUntitled()
+        ws.awaitLoaded()
+        val tab = ws.active
+        val temp = tab.file!!
+        tab.editLine(0, "first line\nsecond line", original = "")
+        val target = File(dir, "notes.txt")
+        var saved: Boolean? = null
+        ws.saveActiveAs(target) { saved = it }
+        awaitUntil("the save") { saved == true && !tab.isLoading && tab.file == target && tab.index != null }
+        assertEquals(listOf("first line", "second line"), target.readLines())
+        assertFalse(tab.isUntitled)
+        assertEquals("notes.txt", tab.displayName)
+        assertFalse(temp.exists())
+    }
+
+    @Test
+    fun `closing an untitled tab deletes its temp file`() {
+        val ws = Workspace(scope)
+        ws.newUntitled()
+        ws.awaitLoaded()
+        val temp = ws.active.file!!
+        assertTrue(temp.exists())
+        ws.close(ws.active)
+        assertFalse(temp.exists())
+    }
 }

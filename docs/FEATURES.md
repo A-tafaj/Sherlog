@@ -15,7 +15,7 @@
 ## Tabs
 - Several files open at once, one tab each (Sublime-style): **File ▾ → Open
   File…** picks several files, **Open Folder…** opens every text file directly in
-  a folder, and **+** at the end of the tab strip adds more.
+  a folder, and **+** (or `Ctrl+N`) opens a new empty file.
 - A file that is already open isn't opened twice — its tab is shown instead.
 - Each tab keeps its own filters, search, highlight and scroll position.
 - **Apply filters to all tabs** copies the current tab's filters and search to

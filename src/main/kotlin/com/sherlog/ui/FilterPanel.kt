@@ -106,7 +106,8 @@ fun FilterPanel(state: AppState, onCollapse: () -> Unit, modifier: Modifier = Mo
                 }
                 if (tagOrder.isEmpty()) {
                     Text(
-                        "No tags match \"$query\"",
+                        // A plain text file has no tags at all, whatever the search box says.
+                        if (index.tags.isEmpty()) "No tags in this file" else "No tags match \"$query\"",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(8.dp),

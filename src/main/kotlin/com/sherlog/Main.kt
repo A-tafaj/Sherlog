@@ -66,19 +66,25 @@ fun main() = application {
                     },
                     onExportClick = {
                         // Default to a name derived from the source so a re-export
-                        // doesn't collide with the file currently open.
-                        val source = workspace.active.index?.file
-                        chooseTextFileToSave(window, "Export Filtered Logs", LogFiles.exportName(source), source?.parentFile)
+                        // doesn't collide with the file currently open. An
+                        // Untitled tab's file is a temp file: neither its name
+                        // nor its folder is the user's.
+                        val tab = workspace.active
+                        val source = if (tab.isUntitled) File("${tab.displayName}.txt") else tab.index?.file
+                        val folder = if (tab.isUntitled) null else source?.parentFile
+                        chooseTextFileToSave(window, "Export Filtered Logs", LogFiles.exportName(source), folder)
                             ?.let(workspace::exportActive)
                     },
                     exitRequested = exitRequested,
                     onExit = ::exitApplication,
                     onExitCancelled = { exitRequested = false },
-                    onSaveAs = {
+                    onSaveAs = { then ->
                         // Like any editor, Save As starts from the file's own name.
-                        val source = workspace.active.file
-                        chooseTextFileToSave(window, "Save As", source?.name ?: "untitled.txt", source?.parentFile)
-                            ?.let(workspace::saveActiveAs)
+                        val tab = workspace.active
+                        val name = if (tab.isUntitled) "${tab.displayName}.txt" else tab.file?.name ?: "untitled.txt"
+                        val folder = if (tab.isUntitled) null else tab.file?.parentFile
+                        val target = chooseTextFileToSave(window, "Save As", name, folder)
+                        if (target == null) then(false) else workspace.saveActiveAs(target, then)
                     },
                     onCopyText = { text ->
                         // Arrives from a worker thread (the lines are read off

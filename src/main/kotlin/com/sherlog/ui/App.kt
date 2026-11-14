@@ -89,8 +89,12 @@ fun App(
     onExportClick: () -> Unit,
     /** Puts text on the system clipboard (a platform concern, like the file dialogs). */
     onCopyText: (String) -> Unit,
-    /** Asks where to Save As (a native dialog), then saves there. Save itself needs no dialog. */
-    onSaveAs: () -> Unit = {},
+    /**
+     * Asks where to Save As (a native dialog), then saves there, telling
+     * [then][onSaveAs] whether it did. Save itself needs no dialog — except
+     * for an Untitled tab, which has nowhere to save to yet.
+     */
+    onSaveAs: (then: (saved: Boolean) -> Unit) -> Unit = {},
     /** The window's close button was pressed: unsaved tabs get asked about before [onExit]. */
     exitRequested: Boolean = false,
     onExit: () -> Unit = {},
@@ -131,7 +135,11 @@ fun App(
     var confirmingSave by remember(state) { mutableStateOf(false) }
     fun requestSave() {
         if (!state.canSave) return
-        if (state.hiddenLineCount > 0) confirmingSave = true else state.save()
+        when {
+            state.isUntitled -> onSaveAs {}
+            state.hiddenLineCount > 0 -> confirmingSave = true
+            else -> state.save()
+        }
     }
 
     // Tabs with unsaved changes that are being closed, asked about one at a
@@ -292,7 +300,8 @@ fun App(
             // The Shift variants first: the plain ones don't look at Shift.
             e.isCtrlPressed && e.isShiftPressed && e.key == Key.O -> { onOpenFolder(); true }
             e.isCtrlPressed && e.key == Key.O -> { onOpenFiles(); true }
-            e.isCtrlPressed && e.isShiftPressed && e.key == Key.S -> { if (exportEnabled) onSaveAs(); true }
+            e.isCtrlPressed && e.isShiftPressed && e.key == Key.S -> { if (exportEnabled) onSaveAs {}; true }
+            e.isCtrlPressed && e.key == Key.N -> { workspace.newUntitled(); true }
             e.isCtrlPressed && e.key == Key.S -> { requestSave(); true }
             e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
             e.isCtrlPressed && e.key == Key.W -> { if (state.file != null) closeTabs(listOf(state), quit = false); true }
@@ -324,7 +333,7 @@ fun App(
         val windowHeight = maxHeight
         val windowWidth = maxWidth
         Column {
-            TabStrip(workspace, onAddFiles = onOpenFiles, onCloseTab = { closeTabs(listOf(it), quit = false) })
+            TabStrip(workspace, onNewFile = workspace::newUntitled, onCloseTab = { closeTabs(listOf(it), quit = false) })
             // Keyed on the tab so UI-only state remembered below (open menus,
             // the tag list's scroll, the slider) belongs to one tab rather
             // than leaking into the next.
@@ -333,15 +342,16 @@ fun App(
                     workspace,
                     onOpenFiles = onOpenFiles,
                     onOpenFolder = onOpenFolder,
+                    onNewFile = workspace::newUntitled,
                     onSave = { requestSave() },
-                    onSaveAs = onSaveAs,
+                    onSaveAs = { onSaveAs {} },
                     onExportClick = onExportClick,
                 )
                 if (confirmingSave) {
                     SaveConfirmation(
                         state,
                         onSave = { confirmingSave = false; state.save() },
-                        onSaveAs = { confirmingSave = false; onSaveAs() },
+                        onSaveAs = { confirmingSave = false; onSaveAs {} },
                         onCancel = { confirmingSave = false },
                     )
                 }
@@ -351,11 +361,14 @@ fun App(
                         asking,
                         onSave = {
                             savingBeforeClose = true
-                            asking.save { saved ->
+                            val then = { saved: Boolean ->
                                 savingBeforeClose = false
-                                // A failed save says why in the status bar; nothing closes.
+                                // A failed (or, for Untitled, cancelled) save leaves
+                                // everything open; a failure says why in a notice.
                                 if (saved) closeAnswered(asking) else cancelClosing()
                             }
+                            // An Untitled tab has nowhere to save to yet: Save As.
+                            if (asking.isUntitled) onSaveAs(then) else asking.save(then)
                         },
                         onDiscard = { closeAnswered(asking) },
                         onCancel = { cancelClosing() },
@@ -412,6 +425,8 @@ fun App(
                                 onJoinNext = state::joinWithNext,
                                 onUndo = { undo(redo = false) },
                                 onRedo = { undo(redo = true) },
+                                focusFirstRow = state.wantsCaret,
+                                onFirstRowFocused = { state.wantsCaret = false },
                                 listState = listState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
@@ -468,6 +483,7 @@ internal fun TooltipText(text: String) {
 @Composable
 private fun TopBar(
     workspace: Workspace,
+    onNewFile: () -> Unit,
     onOpenFiles: () -> Unit,
     onOpenFolder: () -> Unit,
     onSave: () -> Unit,
@@ -483,7 +499,7 @@ private fun TopBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
         ) {
-            FileMenu(state, onOpenFiles, onOpenFolder, onSave, onSaveAs)
+            FileMenu(state, onNewFile, onOpenFiles, onOpenFolder, onSave, onSaveAs)
 
             var presetMenuOpen by remember { mutableStateOf(false) }
             val presetCount = state.selectedPresets.size
@@ -560,7 +576,7 @@ private fun TopBar(
 
             Spacer(Modifier.weight(1f))
             Text(
-                state.index?.file?.name ?: "No file loaded",
+                if (state.index == null) "No file loaded" else state.displayName,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -581,6 +597,7 @@ private fun TopBar(
 @Composable
 private fun FileMenu(
     state: AppState,
+    onNewFile: () -> Unit,
     onOpenFiles: () -> Unit,
     onOpenFolder: () -> Unit,
     onSave: () -> Unit,
@@ -593,6 +610,7 @@ private fun FileMenu(
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             // Closed before acting: the actions open native dialogs.
+            FileMenuItem("New File", "Ctrl+N") { open = false; onNewFile() }
             FileMenuItem("Open File…", "Ctrl+O") { open = false; onOpenFiles() }
             FileMenuItem("Open Folder…", "Ctrl+Shift+O") { open = false; onOpenFolder() }
             HorizontalDivider()
@@ -643,7 +661,7 @@ private fun SaveConfirmation(state: AppState, onSave: () -> Unit, onSaveAs: () -
     val hidden = state.hiddenLineCount
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Save ${state.file?.name.orEmpty()}?") },
+        title = { Text("Save ${state.displayName}?") },
         text = {
             Text(
                 "Only the %,d lines in view are kept. The %,d hidden line%s will be removed from the file for good."
@@ -670,7 +688,7 @@ private fun UnsavedChangesDialog(tab: AppState, onSave: () -> Unit, onDiscard: (
     val hidden = tab.hiddenLineCount
     AlertDialog(
         onDismissRequest = onCancel,
-        title = { Text("Save changes to ${tab.file?.name.orEmpty()}?") },
+        title = { Text("Save changes to ${tab.displayName}?") },
         text = {
             Text(
                 buildString {
@@ -802,8 +820,9 @@ private fun StatusBar(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     ) { Text("Cancel", fontSize = 11.sp) }
                 } else {
+                    // The line count always shows; a message comes after it.
                     Text(
-                        state.statusMessage,
+                        listOfNotNull(state.lineCountText, state.statusMessage.ifBlank { null }).joinToString(" · "),
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -864,14 +883,14 @@ private fun StatusBar(
                     }
                 }
                 if (state.progress == null) {
-                    val needle = state.highlightNeedle.let { if (it.length > 24) it.take(24) + "…" else it }
+                    val needle = counterNeedle(state.highlightNeedle)
                     val highlightText = when {
                         state.highlightCounting -> "counting \"$needle\"…"
                         state.highlightCount != null -> "%,d lines contain \"%s\"".format(state.highlightCount, needle)
                         else -> null
                     }
                     if (highlightText != null && !state.highlightCounting) {
-                        Text(highlightText, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        MatchCounter(highlightText, state.highlightNeedle)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -890,7 +909,7 @@ private fun StatusBar(
                             NavArrow("✕", MaterialTheme.colorScheme.onSurfaceVariant, onClearMatch)
                         }
                     } else if (highlightText != null) {
-                        Text(highlightText, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        MatchCounter(highlightText, state.highlightNeedle)
                     }
                 }
                 // Only while zoomed, so it explains big or tiny text; a click resets.
@@ -909,6 +928,32 @@ private fun StatusBar(
                 }
             }
         }
+    }
+}
+
+/**
+ * The needle as the status bar quotes it: one line, a line break shown as
+ * ⏎, cut at 24 characters. A selection inside a row that holds several lines
+ * carries its breaks, and quoted as is it grew the status bar a line at a
+ * time until the log was squeezed out.
+ */
+internal fun counterNeedle(needle: String): String {
+    val flat = needle.replace("\r\n", "\n").replace('\r', '\n').replace('\n', '⏎')
+    return if (flat.length > 24) flat.take(24) + "…" else flat
+}
+
+/** The status bar's "N lines contain …": always one line; the whole needle is in its tooltip. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun MatchCounter(text: String, needle: String) {
+    TooltipArea(tooltip = { TooltipText(needle.take(500)) }) {
+        Text(
+            text,
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

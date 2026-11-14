@@ -35,7 +35,8 @@ time-range fields are pre-filled with the first and last timestamp in the file.
 Every opened file gets its own tab across the top, as in Sublime Text:
 
 - **Open File…** lets you pick several files at once (Ctrl/Shift-click in the
-  dialog); **+** at the end of the tab strip does the same.
+  dialog). **+** at the end of the tab strip (or `Ctrl`+`N`) opens a new
+  empty file; Save asks where to put it.
 - **Open Folder…** opens every text file directly inside the chosen folder
   (subfolders are skipped), in name order.
 - Tabs shrink as more files open and the strip scrolls once they reach their
@@ -228,6 +229,7 @@ touches the file until you **Save**, and closing with unsaved changes asks.
 | `Enter` / `Shift`+`Enter` | In the search box: next / previous match |
 | `F3` / `Shift`+`F3` | Next / previous match |
 | `Esc` | Clear the line selection, then the search, then the highlight |
+| `Ctrl`+`N` | New empty file |
 | `Ctrl`+`O` / `Ctrl`+`Shift`+`O` | Open files / a folder (adds tabs) |
 | `Ctrl`+`S` / `Ctrl`+`Shift`+`S` | Save / Save As |
 | `Ctrl`+`E` | Export Filtered |

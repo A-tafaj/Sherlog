@@ -142,10 +142,9 @@ class TabSearchTest {
 
         result.tab.selectedTags = setOf("Net")
         result.tab.scheduleApply(0)
-        // Wait for the filter's own status line too, or it lands after ours.
-        awaitUntil("the re-filter") {
-            result.tab.filteredLines.size == 2 && "lines" in result.tab.statusMessage && !result.tab.highlightCounting
-        }
+        // The filter writes its status before the new view, so once the view
+        // is in, its status can't land after ours.
+        awaitUntil("the re-filter") { result.tab.filteredLines.size == 2 && !result.tab.highlightCounting }
 
         assertFalse(ws.openHit(result.tab, hit))
         assertTrue("no longer in this tab" in result.tab.statusMessage, result.tab.statusMessage)
