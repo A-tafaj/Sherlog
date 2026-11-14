@@ -6,6 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -59,7 +62,12 @@ private val BADGE_MIN_WIDTH = 150.dp
  * The blank tab that stands in while nothing is open gets no chip.
  */
 @Composable
-fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
+fun TabStrip(
+    workspace: Workspace,
+    onAddFiles: () -> Unit,
+    /** Closing goes through the caller, which asks about unsaved changes first. */
+    onCloseTab: (AppState) -> Unit = workspace::close,
+) {
     val chips = workspace.tabs.filter { it.file != null }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -86,7 +94,7 @@ fun TabStrip(workspace: Workspace, onAddFiles: () -> Unit) {
                             isDragging = tab === dragging,
                             dragOffset = if (tab === dragging) dragOffset else 0f,
                             onSelect = { workspace.select(tab) },
-                            onClose = { workspace.close(tab) },
+                            onClose = { onCloseTab(tab) },
                             onDragStart = { dragging = tab; dragOffset = 0f },
                             onDrag = { delta ->
                                 dragOffset += delta
@@ -204,12 +212,17 @@ private fun FileTab(
                 else -> null
             }
             if (badge != null) Text(badge, fontSize = 11.sp, color = accent, maxLines = 1)
+            // Unsaved changes show as ● where the × goes, as in Sublime; the
+            // × comes back under the mouse, and closing then asks first.
+            val closeHover = remember { MutableInteractionSource() }
+            val hovered by closeHover.collectIsHoveredAsState()
             Text(
-                "×",
+                if (tab.isDirty && !hovered) "●" else "×",
                 fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (tab.isDirty) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
+                    .hoverable(closeHover)
                     .clickable(onClick = onClose)
                     .padding(horizontal = 6.dp),
             )

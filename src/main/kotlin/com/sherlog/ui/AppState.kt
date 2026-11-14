@@ -2,8 +2,11 @@ package com.sherlog.ui
 
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.sherlog.core.IntList
 import com.sherlog.core.LineTextProvider
 import com.sherlog.core.LogIndex
 import com.sherlog.core.LogIndexer
@@ -26,6 +29,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.BitSet
 
 /** What the search bar does with what you type. */
 enum class SearchMode {
@@ -158,6 +162,25 @@ class AppState(
     var filteredLines by mutableStateOf(IntArray(0))
         private set
 
+    // Unsaved edits. They sit beside the file, never in it, until Save writes
+    // them out: the file and its index stay as they are, so byte offsets hold.
+    // Only changed lines are kept, which is what keeps a 1 GB file workable.
+
+    /** The new text of the lines changed since the last save, by file line. */
+    val editedLines = mutableStateMapOf<Int, String>()
+
+    /** File lines deleted since the last save. Replaced, never mutated, so Compose sees changes. */
+    var deletedLines by mutableStateOf(BitSet())
+        private set
+    var deletedCount by mutableIntStateOf(0)
+        private set
+
+    /** Whether there are changes Save would write (the ● on the tab). */
+    val isDirty: Boolean get() = editedLines.isNotEmpty() || deletedCount > 0
+
+    /** A copy of [editedLines] for work off the UI thread. */
+    fun editsSnapshot(): Map<Int, String> = if (editedLines.isEmpty()) emptyMap() else editedLines.toMap()
+
     // Progress / status
     var progress by mutableStateOf<Float?>(null)
         private set
@@ -204,6 +227,10 @@ class AppState(
         lineSelection = null
         selectionAnchor = -1
         notice = null
+        // Edits key on this file's lines; a (re)loaded file has its own.
+        editedLines.clear()
+        deletedLines = BitSet()
+        deletedCount = 0
         this.file = file
         isLoading = true
         statusMessage = "Indexing ${file.name}…"
@@ -344,6 +371,7 @@ class AppState(
         val range = lineSelection ?: return
         val prov = provider ?: return
         val lines = filteredLines
+        val edits = editsSnapshot()
         scope.launch(Dispatchers.IO) {
             val total = range.last - range.first + 1
             val n = minOf(total, maxLines)
@@ -351,7 +379,8 @@ class AppState(
                 buildString {
                     for (k in 0 until n) {
                         if (k > 0) append(System.lineSeparator())
-                        append(prov.line(lines[range.first + k]))
+                        val line = lines[range.first + k]
+                        append(edits[line] ?: prov.line(line))
                     }
                 }
             }.getOrElse {
@@ -502,36 +531,78 @@ class AppState(
             return n
         }
 
-    /** Lines the filters hide, which a [save] would remove from the file. */
-    val hiddenLineCount: Int get() = (index?.lineCount ?: 0) - filteredLines.size
+    /**
+     * Lines the filters hide, which a [save] would remove from the file. Not
+     * the deleted ones: those the user removed on purpose.
+     */
+    val hiddenLineCount: Int get() = (index?.lineCount ?: 0) - deletedCount - filteredLines.size
 
     /**
-     * Whether there is anything to write: lines in view, nothing running.
-     * An empty view is never written — it would only produce an empty file.
+     * Whether there is anything to write: nothing running, and lines in view
+     * — or edits, since deleting every line and saving is an editor's right.
+     * An empty view is otherwise never written: a filter that matched
+     * nothing would only produce an empty file.
      */
-    val canWriteView: Boolean get() = index != null && filteredLines.isNotEmpty() && !isBusy
+    val canWriteView: Boolean get() = index != null && !isBusy && (filteredLines.isNotEmpty() || isDirty)
 
-    /** Save only changes the file when the filters hide something. */
-    val canSave: Boolean get() = canWriteView && hiddenLineCount > 0
+    /** Save changes the file when there are edits, or lines the filters hide. */
+    val canSave: Boolean get() = canWriteView && (isDirty || hiddenLineCount > 0)
+
+    /**
+     * Types [text] into file line [line], whose text in the file is
+     * [original]. Typing it back to the original is no edit at all.
+     */
+    fun editLine(line: Int, text: String, original: String) {
+        if (text == original) editedLines.remove(line) else editedLines[line] = text
+        // Positions don't move, so the matches stay usable while recounting.
+        if (highlightNeedle.isNotEmpty()) scheduleHighlightCount(keepMatches = true)
+    }
+
+    /** Deletes the lines at [range] (positions in the view). Save takes them out of the file. */
+    fun deleteLines(range: IntRange) {
+        val lines = filteredLines
+        val first = range.first.coerceAtLeast(0)
+        val last = range.last.coerceAtMost(lines.lastIndex)
+        if (first > last) return
+        val gone = deletedLines.clone() as BitSet
+        for (p in first..last) gone.set(lines[p])
+        // Only the edited keys, not every deleted line: Ctrl+A, Delete on a
+        // million lines must not mean a million map updates.
+        editedLines.keys.filter { gone.get(it) }.forEach { editedLines.remove(it) }
+        deletedLines = gone
+        deletedCount = gone.cardinality()
+        filteredLines = lines.copyOfRange(0, first) + lines.copyOfRange(last + 1, lines.size)
+        lineSelection = null
+        selectionAnchor = -1
+        val n = last - first + 1
+        statusMessage = "Deleted %,d line%s — Save writes it to the file.".format(n, if (n == 1) "" else "s")
+        // Every position after the cut moved up.
+        scheduleHighlightCount(0)
+    }
 
     /** Export Filtered: writes the view to [target] as a copy; this tab stays on its file. */
     fun export(target: File) = writeView(target, showTarget = false)
 
-    /** Save: writes the view over this tab's own file (see [saveAs]). */
-    fun save() {
-        file?.let(::saveAs)
+    /**
+     * Save: writes the view, with its edits, over this tab's own file (see
+     * [saveAs]). [then] learns whether it worked, once the file is written.
+     */
+    fun save(then: (saved: Boolean) -> Unit = {}) {
+        val f = file ?: return then(false)
+        saveAs(f, then)
     }
 
     /**
      * Save As: writes the view to [target], and this tab then shows [target],
      * re-indexed. Lines and tags the filters hid are gone from it, so the
-     * filters are reset: they are now part of the file.
+     * filters are reset: they are now part of the file. So are the edits.
      */
-    fun saveAs(target: File) = writeView(target, showTarget = true)
+    fun saveAs(target: File, then: (saved: Boolean) -> Unit = {}) = writeView(target, showTarget = true, then)
 
-    private fun writeView(target: File, showTarget: Boolean) {
-        val idx = index ?: return
+    private fun writeView(target: File, showTarget: Boolean, then: (Boolean) -> Unit = {}) {
+        val idx = index ?: return then(false)
         val lines = filteredLines
+        val edits = editsSnapshot()
         cancelWork()
         // Writing onto the currently open file is allowed (the exporter
         // writes via a temp file), but our own read handle must be released
@@ -542,10 +613,19 @@ class AppState(
             provider?.close()
             provider = null
         }
+        val deleted = deletedLines
+        // The file is unchanged when writing fails, so reopening it to get the
+        // released provider back must not cost the user their edits.
+        fun reopenKeepingEdits() {
+            openFile(idx.file)
+            editedLines.putAll(edits)
+            deletedLines = deleted
+            deletedCount = deleted.cardinality()
+        }
         val verb = if (showTarget) "Saving" else "Exporting"
         workJob = scope.launch(Dispatchers.IO) {
             try {
-                LogExporter.export(idx, lines, target) { done, total ->
+                LogExporter.export(idx, lines, target, edits) { done, total ->
                     progress = if (total > 0) done.toFloat() / total else 1f
                     progressLabel = "$verb: %,d / %,d lines".format(done, total)
                 }
@@ -556,14 +636,21 @@ class AppState(
                     statusMessage = "Exported %,d lines to ${target.name}".format(lines.size)
                     if (ontoOpenFile) openFile(target)
                 }
+                then(true)
             } catch (e: CancellationException) {
-                if (ontoOpenFile) openFile(idx.file) // restore the released provider
+                if (ontoOpenFile) reopenKeepingEdits() // restore the released provider
+                then(false)
                 throw e
             } catch (e: Exception) {
                 if (isActive) {
-                    statusMessage = "${if (showTarget) "Save" else "Export"} failed: ${e.message}"
-                    if (ontoOpenFile) openFile(idx.file) // restore the released provider
+                    if (ontoOpenFile) reopenKeepingEdits() // restore the released provider
+                    // A notice, not just the status: the reload's filter pass
+                    // rewrites the status, and a failed save must not go unseen.
+                    val message = "${if (showTarget) "Save" else "Export"} failed: ${e.message}"
+                    statusMessage = message
+                    addNotice(message)
                 }
+                then(false)
             } finally {
                 progress = null
             }
@@ -646,7 +733,12 @@ class AppState(
      * dragging a selection or typing a Find query fires this on every change,
      * and the count needs a streaming pass over the file.
      */
-    private fun scheduleHighlightCount(debounceMs: Long = 400) {
+    /**
+     * [keepMatches]: the view's positions haven't moved (an edit within a
+     * line), so the current matches stay usable — markers, F3 — until the
+     * recount replaces them, instead of vanishing on every keystroke.
+     */
+    private fun scheduleHighlightCount(debounceMs: Long = 400, keepMatches: Boolean = false) {
         highlightJob?.cancel()
         // Cancelling can't stop a count that is already past its last check,
         // and it would then write its matches over the ones cleared here. The
@@ -662,11 +754,11 @@ class AppState(
             currentMatchIndex = -1
             return
         }
-        highlightCounting = true
+        if (!keepMatches) highlightCounting = true
         highlightJob = scope.launch(Dispatchers.IO) {
             delay(debounceMs)
             val lines = filteredLines
-            val result = runCatching { HighlightCounter.matches(idx, lines, needle, isRegex) }
+            val result = runCatching { HighlightCounter.matches(idx, lines, needle, isRegex, editsSnapshot()) }
             if (!isActive || generation != highlightGeneration) return@launch
             val hits = result.getOrNull()
             highlightMatches = hits ?: IntArray(0)
@@ -750,12 +842,17 @@ class AppState(
     private suspend fun runFilter(idx: LogIndex) {
         val state = buildFilterState() ?: return
         appliedFilter = state
-        val result = FilterEngine.apply(idx, state) { done, total ->
+        val deleted = deletedLines
+        val found = FilterEngine.apply(idx, state, editsSnapshot()) { done, total ->
             if (state.needsText) {
                 progress = if (total > 0) done.toFloat() / total else 0f
                 progressLabel = "Filtering…"
             }
         }
+        // Deleted lines stay out of every view until Save takes them out of the file.
+        val result = if (deleted.isEmpty) found else IntList(found.size).apply {
+            for (line in found) if (!deleted.get(line)) add(line)
+        }.toArray()
         // The matches index the old view until the recount below lands; mark
         // them stale *before* swapping the view so navigation can't use them.
         if (highlightNeedle.isNotEmpty()) highlightCounting = true
@@ -769,7 +866,7 @@ class AppState(
             // An empty view is otherwise indistinguishable from a broken one.
             "0 lines — %d filter%s active".format(active, if (active == 1) "" else "s")
         } else buildString {
-            append("%,d / %,d lines".format(result.size, idx.lineCount))
+            append("%,d / %,d lines".format(result.size, idx.lineCount - deleted.cardinality()))
             if (state.searchQuery.isNotBlank()) append(" · %,d search matches".format(result.size))
         }
         // The highlight count is relative to the filtered set; recount. Also

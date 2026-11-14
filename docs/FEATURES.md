@@ -123,6 +123,12 @@
 - When a filter combination matches nothing, the status bar reports how many
   filters are active rather than showing a bare empty view.
 
+## Editing
+- Every line is editable; Delete / `Ctrl+Shift+K` removes lines. Edits stay
+  in memory (only changed lines, so big files are fine) until Save.
+- Unsaved tabs show ●, changed lines a bar; closing or quitting asks first.
+- Search, Find and Export see edits right away; level, tag and colour update on Save.
+
 ## Save and export
 - **Save** keeps only the lines in view (asks first); **Save As** writes them
   to a new file and switches to it. Filters reset afterwards.

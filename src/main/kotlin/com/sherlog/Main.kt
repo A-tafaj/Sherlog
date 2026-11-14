@@ -5,7 +5,10 @@ import androidx.compose.foundation.defaultScrollbarStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -29,8 +32,10 @@ import javax.swing.JOptionPane
 import javax.swing.UIManager
 
 fun main() = application {
+    // Closing the window first asks about tabs with unsaved changes (App).
+    var exitRequested by remember { mutableStateOf(false) }
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = { exitRequested = true },
         title = "Sherlog",
         // Taskbar/window icon while running. The installers get their icon
         // from icons/ instead (see build.gradle.kts) — jpackage needs
@@ -66,6 +71,9 @@ fun main() = application {
                         chooseTextFileToSave(window, "Export Filtered Logs", LogFiles.exportName(source), source?.parentFile)
                             ?.let(workspace::exportActive)
                     },
+                    exitRequested = exitRequested,
+                    onExit = ::exitApplication,
+                    onExitCancelled = { exitRequested = false },
                     onSaveAs = {
                         // Like any editor, Save As starts from the file's own name.
                         val source = workspace.active.file

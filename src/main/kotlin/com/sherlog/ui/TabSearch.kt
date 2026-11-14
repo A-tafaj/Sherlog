@@ -129,6 +129,8 @@ class TabSearch(private val scope: CoroutineScope) {
             return
         }
         val targets = tabs.filter { it.index != null && it.provider != null }
+        // Taken here, on the UI thread: each tab's unsaved edits are searched too.
+        val edits = targets.associateWith { it.editsSnapshot() }
         isSearching = true
         job = scope.launch(Dispatchers.IO) {
             val found = mutableListOf<FileResult>()
@@ -138,7 +140,7 @@ class TabSearch(private val scope: CoroutineScope) {
                 val lines = tab.filteredLines
                 progressLabel = tab.file?.name.orEmpty()
                 val hits = try {
-                    HighlightCounter.matches(idx, lines, needle, isRegex)
+                    HighlightCounter.matches(idx, lines, needle, isRegex, edits.getValue(tab))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -147,7 +149,8 @@ class TabSearch(private val scope: CoroutineScope) {
                 if (generation != this@TabSearch.generation) return@launch
                 val previews = hits.take(MAX_PREVIEWS_PER_FILE).map { position ->
                     val line = lines[position]
-                    Hit(position, line, runCatching { provider.line(line) }.getOrDefault(""))
+                    val text = edits.getValue(tab)[line] ?: runCatching { provider.line(line) }.getOrDefault("")
+                    Hit(position, line, text)
                 }
                 found += FileResult(tab, tab.file?.name.orEmpty(), hits.size, previews)
                 results = found.toList()

@@ -91,6 +91,11 @@ fun App(
     onCopyText: (String) -> Unit,
     /** Asks where to Save As (a native dialog), then saves there. Save itself needs no dialog. */
     onSaveAs: () -> Unit = {},
+    /** The window's close button was pressed: unsaved tabs get asked about before [onExit]. */
+    exitRequested: Boolean = false,
+    onExit: () -> Unit = {},
+    /** The user chose Cancel on one of those questions; the app stays open. */
+    onExitCancelled: () -> Unit = {},
 ) {
     // Everything below shows the active tab.
     val state = workspace.active
@@ -121,19 +126,55 @@ fun App(
     // Whether focus is anywhere in the window at all.
     var focusInside by remember { mutableStateOf(false) }
 
-    // Folding the filter panel away disposes a field that may hold focus, and
-    // with nothing focused no shortcut fires (not even Ctrl+B to undo it).
-    // Save asks first when it would remove lines (it always does, until lines
-    // can be edited), naming how many: the file loses them for good.
+    // Save asks first when the filters hide lines, naming how many: the file
+    // loses them for good. Edits alone save straight away, as in an editor.
     var confirmingSave by remember(state) { mutableStateOf(false) }
     fun requestSave() {
-        if (state.canSave) confirmingSave = true
+        if (!state.canSave) return
+        if (state.hiddenLineCount > 0) confirmingSave = true else state.save()
+    }
+
+    // Tabs with unsaved changes that are being closed, asked about one at a
+    // time, and whether the app quits once they're all answered.
+    var closing by remember { mutableStateOf<List<AppState>>(emptyList()) }
+    var quitting by remember { mutableStateOf(false) }
+    var savingBeforeClose by remember { mutableStateOf(false) }
+
+    /** Closes [tabs]; the ones with unsaved changes are asked about first. */
+    fun closeTabs(tabs: List<AppState>, quit: Boolean) {
+        val (dirty, clean) = tabs.partition { it.isDirty }
+        if (!quit) clean.forEach(workspace::close)
+        quitting = quit
+        closing = dirty
+        if (dirty.isEmpty() && quit) onExit()
+    }
+
+    /** The tab asked about is answered: close it (unless quitting) and ask about the next. */
+    fun closeAnswered(tab: AppState) {
+        if (!quitting) workspace.close(tab)
+        closing = closing.drop(1)
+        if (closing.isEmpty() && quitting) onExit()
+    }
+
+    fun cancelClosing() {
+        closing = emptyList()
+        if (quitting) onExitCancelled()
+        quitting = false
+    }
+
+    LaunchedEffect(exitRequested) {
+        if (exitRequested) closeTabs(workspace.tabs, quit = true)
+    }
+    // Show the file being asked about.
+    LaunchedEffect(closing.firstOrNull()) {
+        closing.firstOrNull()?.let(workspace::select)
     }
 
     // Folding the filter panel away disposes a field that may hold focus, and
     // with nothing focused no shortcut fires (not even Ctrl+B to undo it). A
-    // closed dialog can leave focus nowhere the same way.
-    LaunchedEffect(workspace.prefs.filterPanelCollapsed, confirmingSave) {
+    // closed dialog, or a deleted line that had the caret, can leave focus
+    // nowhere the same way.
+    LaunchedEffect(workspace.prefs.filterPanelCollapsed, confirmingSave, closing, state.filteredLines) {
         withFrameNanos { }
         if (!focusInside) runCatching { rootFocus.requestFocus() }
     }
@@ -212,6 +253,10 @@ fun App(
             // Only while no field has focus: in a text box, Ctrl+A is the box's.
             // From a clicked row, the viewer takes it (LogViewer).
             rootFocused && e.isCtrlPressed && e.key == Key.A -> { state.selectAllLines(); true }
+            // After Ctrl+A from here, focus is still on the root, not in the viewer.
+            rootFocused && state.lineSelection != null && (e.key == Key.Delete || e.key == Key.Backspace) -> {
+                state.lineSelection?.let(state::deleteLines); true
+            }
             // Log text zoom, for every tab. Ctrl+= is Ctrl++ without Shift.
             e.isCtrlPressed && e.key in ZoomInKeys -> { workspace.prefs.zoom(1); true }
             e.isCtrlPressed && e.key in ZoomOutKeys -> { workspace.prefs.zoom(-1); true }
@@ -237,7 +282,7 @@ fun App(
             e.isCtrlPressed && e.isShiftPressed && e.key == Key.S -> { if (exportEnabled) onSaveAs(); true }
             e.isCtrlPressed && e.key == Key.S -> { requestSave(); true }
             e.isCtrlPressed && e.key == Key.E -> { if (exportEnabled) onExportClick(); exportEnabled }
-            e.isCtrlPressed && e.key == Key.W -> { if (state.file != null) workspace.close(state); true }
+            e.isCtrlPressed && e.key == Key.W -> { if (state.file != null) closeTabs(listOf(state), quit = false); true }
             e.isCtrlPressed && e.key == Key.Tab -> { workspace.selectNext(if (e.isShiftPressed) -1 else 1); true }
             e.isCtrlPressed && e.key == Key.PageDown -> { workspace.selectNext(1); true }
             e.isCtrlPressed && e.key == Key.PageUp -> { workspace.selectNext(-1); true }
@@ -266,7 +311,7 @@ fun App(
         val windowHeight = maxHeight
         val windowWidth = maxWidth
         Column {
-            TabStrip(workspace, onAddFiles = onOpenFiles)
+            TabStrip(workspace, onAddFiles = onOpenFiles, onCloseTab = { closeTabs(listOf(it), quit = false) })
             // Keyed on the tab so UI-only state remembered below (open menus,
             // the tag list's scroll, the slider) belongs to one tab rather
             // than leaking into the next.
@@ -285,6 +330,22 @@ fun App(
                         onSave = { confirmingSave = false; state.save() },
                         onSaveAs = { confirmingSave = false; onSaveAs() },
                         onCancel = { confirmingSave = false },
+                    )
+                }
+                val asking = closing.firstOrNull()
+                if (asking != null && asking === state && !savingBeforeClose) {
+                    UnsavedChangesDialog(
+                        asking,
+                        onSave = {
+                            savingBeforeClose = true
+                            asking.save { saved ->
+                                savingBeforeClose = false
+                                // A failed save says why in the status bar; nothing closes.
+                                if (saved) closeAnswered(asking) else cancelClosing()
+                            }
+                        },
+                        onDiscard = { closeAnswered(asking) },
+                        onCancel = { cancelClosing() },
                     )
                 }
                 HorizontalDivider()
@@ -331,6 +392,9 @@ fun App(
                                 matchPositions = if (state.highlightCounting) IntArray(0) else state.highlightMatches,
                                 currentMatchIndex = state.currentMatchIndex,
                                 onMatchClick = { revealMatch(state.goToMatch(it)) },
+                                edits = state.editedLines,
+                                onEditLine = state::editLine,
+                                onDeleteLines = state::deleteLines,
                                 listState = listState,
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                             )
@@ -574,6 +638,37 @@ private fun SaveConfirmation(state: AppState, onSave: () -> Unit, onSaveAs: () -
             Row {
                 TextButton(onClick = onCancel) { Text("Cancel") }
                 TextButton(onClick = onSaveAs) { Text("Save As…") }
+            }
+        },
+    )
+}
+
+/**
+ * Closing (or quitting) with unsaved changes. Save here is the File menu's
+ * Save, so when the filters hide lines it removes those too — and says so,
+ * since that dialog is skipped.
+ */
+@Composable
+private fun UnsavedChangesDialog(tab: AppState, onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Unit) {
+    val hidden = tab.hiddenLineCount
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Save changes to ${tab.file?.name.orEmpty()}?") },
+        text = {
+            Text(
+                buildString {
+                    append("Your changes are lost if you don't save them.")
+                    if (hidden > 0) {
+                        append(" Saving also removes the %,d line%s the filters hide.".format(hidden, if (hidden == 1) "" else "s"))
+                    }
+                },
+            )
+        },
+        confirmButton = { TextButton(onClick = onSave) { Text("Save") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onCancel) { Text("Cancel") }
+                TextButton(onClick = onDiscard) { Text("Don't Save") }
             }
         },
     )

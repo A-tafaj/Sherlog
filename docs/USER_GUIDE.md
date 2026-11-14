@@ -199,6 +199,13 @@ that leaves nothing, the status bar says `0 lines — N filters active`.
 **Clear Filters** resets everything (time range resets to the file's full
 span), including presets, the tag search box and the selection highlight.
 
+## Editing
+
+Click a line and type to change it. To remove lines, select them and press
+`Delete` (or right-click → Delete); `Ctrl`+`Shift`+`K` deletes the line with
+the caret. Changed lines get a bar on the left and the tab a ●. Nothing
+touches the file until you **Save**, and closing with unsaved changes asks.
+
 ## Saving and exporting
 
 - **File ▾ → Save** (`Ctrl`+`S`) keeps only the lines in view and removes the
@@ -226,6 +233,7 @@ span), including presets, the tag search box and the selection highlight.
 | `Ctrl`+`W` | Close the tab |
 | `Ctrl`+`A` | Select all lines in the view |
 | `Ctrl`+`B` | Hide / show the filter panel |
+| `Delete` / `Ctrl`+`Shift`+`K` | Delete the selected lines / the line with the caret |
 | `Ctrl`+`+` / `Ctrl`+`-` / `Ctrl`+`0` | Zoom the log text in / out / reset (also `Ctrl`+wheel) |
 | `Ctrl`+`C` | Copy the selected lines, or the text selected within a line |
 
@@ -236,4 +244,3 @@ span), including presets, the tag search box and the selection highlight.
 - Text-based filters (search, exclude/keep) rescan the file, so on a very
   large file expect a few seconds with a progress bar; tag/PID/level/time
   filters are instant.
-- Lines can't be edited in the app yet: filter, then Save or Export.
